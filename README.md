@@ -2,8 +2,8 @@ OOPSC
 =====
 
 This is a compiler for the OOPS programming language. The OOPS programming lanugage
-is a fictional language introduced in the course "‹bersetzer" (Compiler) at the
-Universit‰t Bremen.
+is a fictional language introduced in the course "√úbersetzer" (Compiler) at the
+Universit√§t Bremen.
 
 Building
 --------
