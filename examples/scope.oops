@@ -1,0 +1,32 @@
+| Das Programm testet den Zugriff auf Objektattribute.
+| Die Ausgabe sollte ABCDED sein.
+CLASS Main IS
+    a : Integer;
+    c : Main;
+    
+    METHOD b IS
+    BEGIN
+        WRITE a;
+    END METHOD
+
+    METHOD main IS
+        a : Integer;
+        b : Main;
+    BEGIN
+        a := 65;
+        b := SELF;
+        SELF.a := 66;
+        WRITE a;
+        b.b;
+        b.a := 67;
+        SELF.b;
+        c := SELF;
+        b.c.c.a := 68;
+        b.c.c.c.c.c.c.c.b;
+        b := NEW Main;
+        b.a := 69;
+        b.c := SELF;
+        b.b;
+        b.c.b;
+    END METHOD
+END CLASS

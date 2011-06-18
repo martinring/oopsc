@@ -1,0 +1,7 @@
+CLASS Main IS
+    METHOD main IS
+    BEGIN
+        IF FALSE = 1 THEN | Fehler
+        END IF
+    END METHOD
+END CLASS

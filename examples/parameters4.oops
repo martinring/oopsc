@@ -1,0 +1,10 @@
+CLASS Main IS
+    METHOD a(b, c : Integer) IS
+    BEGIN    
+    END METHOD
+    
+    METHOD main IS
+    BEGIN
+        a(1, TRUE); | Falscher Typ
+    END METHOD
+END CLASS

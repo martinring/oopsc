@@ -1,0 +1,6 @@
+CLASS Main IS
+    METHOD main : Integer IS | main darf kein Ergebnis haben
+    BEGIN
+        RETURN 1;
+    END METHOD
+END CLASS

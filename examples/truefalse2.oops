@@ -1,0 +1,7 @@
+CLASS Main IS
+    METHOD main IS
+        a : Integer;
+    BEGIN
+        a := TRUE; | Fehler
+    END METHOD
+END CLASS

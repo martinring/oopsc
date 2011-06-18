@@ -1,0 +1,37 @@
+| Programm muss ABCDEDCBA ausgeben
+CLASS Main IS
+    METHOD main IS
+    BEGIN
+        a;
+        b(66);
+        c(67, 68, TRUE, 69);
+        d(68);
+    END METHOD
+
+    METHOD a IS
+    BEGIN
+        WRITE 65;
+    END METHOD
+    
+    METHOD b(a : Integer) IS
+    BEGIN
+        WRITE a;
+    END METHOD
+    
+    METHOD c(a, b : Integer; c : Boolean; d : Integer) IS
+    BEGIN
+        SELF.b(a);
+        SELF.b(b);
+        IF c THEN
+            SELF.b(d);
+        END IF
+    END METHOD
+    
+    METHOD d(d : Integer) IS
+    BEGIN
+        WRITE d;
+        IF d > 65 THEN
+            SELF.d(d - 1);
+        END IF
+    END METHOD
+END CLASS

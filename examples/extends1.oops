@@ -1,0 +1,56 @@
+| Dieses Programm testet statische und dynamische Bindung.
+| Die Ausgabe sollte ABBAA sein.
+CLASS A IS
+    a : Integer;
+  
+    METHOD print IS
+    BEGIN
+        WRITE a;
+    END METHOD
+END CLASS
+
+CLASS B EXTENDS A IS
+    a : Integer;
+  
+    METHOD print IS
+    BEGIN
+        WRITE a;
+    END METHOD
+    
+    METHOD printBase IS
+    BEGIN
+        BASE.print;
+        WRITE BASE.a;
+    END METHOD
+END CLASS
+
+CLASS Main IS
+    METHOD main IS
+        a : A;
+        b : B;
+        c : A;
+    BEGIN
+        a := NEW A;
+        b := NEW B;
+        a.a := 65;
+        b.a := 66;
+        c := b;
+        c.a := a.a;
+        a.print;     | A
+        b.print;     | B
+        c.print;     | B
+        b.printBase; | A
+    END METHOD
+END CLASS
+
+CLASS C EXTENDS Integer IS
+END CLASS
+
+CLASS D EXTENDS E IS
+END CLASS
+
+CLASS E EXTENDS C IS
+END CLASS
+
+CLASS F EXTENDS Object IS
+END CLASS

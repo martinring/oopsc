@@ -1,0 +1,7 @@
+CLASS Main IS
+    METHOD main IS
+        a : Boolean;
+    BEGIN
+        a := 1; | Fehler
+    END METHOD
+END CLASS

@@ -1,0 +1,38 @@
+| Programm muss ABCDEFGH ausgeben
+CLASS Main IS
+    METHOD main IS
+        a : Integer;
+    BEGIN
+        a := 65;
+        WHILE a < 73 DO
+            IF a > 67 THEN
+                IF a > 69 THEN
+                    IF a > 71 THEN
+                        WRITE 72;
+                    ELSE
+                        IF a = 70 THEN
+                            WRITE 70;
+                        END IF
+                        IF a = 71 THEN
+                            WRITE 71;
+                        ELSE
+                        END IF
+                    END IF
+                ELSEIF a < 69 THEN
+                    WRITE 68;
+                ELSEIF a > 68 THEN
+                    WRITE 69;
+                END IF
+            ELSE
+                IF a < 66 THEN
+                    WRITE 65;
+                ELSEIF a = 67 THEN
+                    WRITE 67;
+                ELSE
+                    WRITE 66;
+                END IF
+            END IF
+            a := a + 1;
+        END WHILE
+    END METHOD
+END CLASS

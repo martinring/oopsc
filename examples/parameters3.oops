@@ -1,0 +1,10 @@
+CLASS Main IS
+    METHOD a(b : Integer) IS
+    BEGIN    
+    END METHOD
+    
+    METHOD main IS
+    BEGIN
+        a; | Zu wenige Parameter
+    END METHOD
+END CLASS

@@ -1,0 +1,5 @@
+CLASS Main IS
+    METHOD main(a : Integer) IS | main darf keine Parameter haben
+    BEGIN
+    END METHOD
+END CLASS

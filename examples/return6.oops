@@ -1,0 +1,10 @@
+CLASS Main IS
+    METHOD a : Integer IS
+    BEGIN
+        RETURN; | Hier muss eine Wert zurückgegeben werden
+    END METHOD
+
+    METHOD main IS
+    BEGIN
+    END METHOD
+END CLASS

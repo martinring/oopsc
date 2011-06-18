@@ -1,0 +1,9 @@
+CLASS Main IS
+    METHOD main IS
+        a : Integer;
+    BEGIN
+        a := 1;
+        IF 5 < 7 AND a THEN | Fehler
+        END IF
+    END METHOD
+END CLASS

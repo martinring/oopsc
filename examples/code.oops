@@ -1,0 +1,38 @@
+| Das Programm gibt den ASCII-Code für jedes eingegebene 
+| Zeichen aus.
+CLASS Main IS
+    number : Integer;
+    
+    | Die Methode gibt das Attribut number aus.
+    | Sie funktioniert nur für Zahlen im
+    | Bereich [-10^9+1 .. 10^9-1].
+    METHOD printNumber IS
+        number : Integer;
+        exp : Integer;
+    BEGIN
+        number := SELF.number;
+        IF number < 0 THEN
+            WRITE 45;
+            number := -number;
+        END IF
+        exp := 10;
+        WHILE exp <= number DO
+            exp := exp * 10;
+        END WHILE
+        WHILE exp >= 10 DO
+            exp := exp / 10;
+            WRITE number / exp + 48;
+            number := number MOD exp;
+        END WHILE
+    END METHOD
+
+    METHOD main IS
+    BEGIN
+        READ number;
+        WHILE number # -1 DO
+            printNumber;
+            WRITE 32;
+            READ number;
+        END WHILE
+    END METHOD
+END CLASS

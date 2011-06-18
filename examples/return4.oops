@@ -1,0 +1,11 @@
+CLASS Main IS
+    METHOD main IS
+    BEGIN
+        WRITE a; | Typkonflikt
+    END METHOD
+    
+    METHOD a : Boolean IS
+    BEGIN
+        RETURN TRUE;
+    END METHOD
+END CLASS

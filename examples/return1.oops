@@ -1,0 +1,61 @@
+| Programm muss ABCD ausgeben
+| Stack- und Heapgröße müssen möglicherweise erhöht werden
+CLASS Main IS
+    METHOD main IS
+        s : Stack;
+    BEGIN
+        s := NEW Stack.init.push(67).push(99).push(65);
+        s.pop.value := 66; | Ersetze 99 durch 66
+        WHILE NOT s.empty DO
+            WRITE s.top;
+            s := s.pop;
+        END WHILE
+        WRITE factorial(4) + 44;
+        RETURN;
+        WRITE 69;
+    END METHOD
+    
+    METHOD factorial(n : Integer) : Integer IS
+    BEGIN
+        IF n = 0 THEN
+            RETURN 1;
+        ELSE
+            RETURN n * factorial(n - 1);
+        END IF
+    END METHOD
+END CLASS
+
+CLASS Stack IS
+    value : Integer;
+    next : Stack;
+
+    METHOD init : Stack IS
+    BEGIN
+        next := NULL;
+        RETURN SELF;
+    END METHOD
+    
+    METHOD push(n : Integer) : Stack IS
+        s : Stack;
+    BEGIN
+        s := NEW Stack;
+        s.value := n;
+        s.next := SELF;
+        RETURN s;
+    END METHOD
+    
+    METHOD pop : Stack IS
+    BEGIN
+        RETURN next;
+    END METHOD
+    
+    METHOD top : Integer IS
+    BEGIN
+        RETURN value;
+    END METHOD
+    
+    METHOD empty : Boolean IS
+    BEGIN
+        RETURN next = NULL;
+    END METHOD
+END CLASS

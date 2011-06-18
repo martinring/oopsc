@@ -1,0 +1,14 @@
+CLASS Main IS
+    METHOD main IS
+        a : Integer;
+    BEGIN
+        READ a;
+        IF a = 1 THEN
+            WRITE 65;
+        ELSE
+            WRITE 66;
+        ELSE | Fehler
+            WRITE 67;
+        END IF
+    END METHOD
+END CLASS

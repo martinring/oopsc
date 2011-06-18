@@ -1,0 +1,5 @@
+CLASS Main IS
+    METHOD main : Integer IS
+    BEGIN
+    END METHOD | RETURN fehlt
+END CLASS

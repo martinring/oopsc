@@ -1,0 +1,11 @@
+CLASS A IS
+    METHOD a(b : Integer) IS
+    BEGIN
+    END METHOD
+END CLASS
+
+CLASS B EXTENDS A IS
+    METHOD a IS | Fehler: Überladung nicht erlaubt
+    BEGIN
+    END METHOD
+END CLASS

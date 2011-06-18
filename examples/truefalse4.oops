@@ -1,0 +1,6 @@
+CLASS Main IS
+    METHOD main IS
+        TRUE : Integer; | Fehler
+    BEGIN
+    END METHOD
+END CLASS

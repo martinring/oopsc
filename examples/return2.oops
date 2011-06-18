@@ -1,0 +1,6 @@
+CLASS Main IS
+    METHOD main IS
+    BEGIN
+        WRITE main; | main hat kein Ergebnis
+    END METHOD
+END CLASS

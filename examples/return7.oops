@@ -1,0 +1,10 @@
+CLASS Main IS
+    METHOD a : Integer IS
+    BEGIN
+        RETURN TRUE; | Typkonflikt
+    END METHOD
+
+    METHOD main IS
+    BEGIN
+    END METHOD
+END CLASS

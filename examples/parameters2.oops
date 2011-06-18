@@ -1,0 +1,6 @@
+CLASS Main IS
+    METHOD main IS
+    BEGIN
+        main(1); | Zu viele Parameter
+    END METHOD
+END CLASS

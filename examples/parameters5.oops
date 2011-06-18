@@ -1,0 +1,10 @@
+CLASS Main IS
+    METHOD a(b : Integer) IS
+        b : Integer; | Doppelte Deklaration
+    BEGIN    
+    END METHOD
+
+    METHOD main IS
+    BEGIN
+    END METHOD
+END CLASS

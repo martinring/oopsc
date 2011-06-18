@@ -1,0 +1,11 @@
+CLASS Main IS
+    METHOD main IS
+    BEGIN
+        a; | Hier wird eine Methode ohne Ergebnis erwartet
+    END METHOD
+    
+    METHOD a : Integer IS
+    BEGIN
+        RETURN 1;
+    END METHOD
+END CLASS

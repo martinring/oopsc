@@ -1,0 +1,12 @@
+{ Dieses Programm gibt einfach die Eingabe aus. }
+CLASS Main IS
+    METHOD main IS
+        c : Integer;
+    BEGIN
+        READ c;
+        WHILE c # -1 DO
+            WRITE c; | Zeichen ausgeben
+            READ c;  | und neues lesen
+        END WHILE
+    END METHOD
+END CLASS

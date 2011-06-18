@@ -1,0 +1,34 @@
+CLASS Main IS
+    a : A;
+    
+    METHOD b IS
+    BEGIN
+        WRITE 79;
+        WRITE 75;
+    END METHOD
+    
+    METHOD main IS
+    BEGIN
+        a := NEW A;
+        a.b;
+    END METHOD
+END CLASS
+
+CLASS A IS
+    a : B;
+    
+    METHOD b IS
+    BEGIN
+        a := NEW B;
+        a.b;
+    END METHOD
+END CLASS
+
+CLASS Main IS | Fehler
+    a : Main;
+    METHOD b IS
+    BEGIN
+        a := NEW Main;
+        a.b;
+    END METHOD
+END CLASS

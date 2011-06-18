@@ -1,0 +1,12 @@
+CLASS Main IS
+    METHOD a(b : Integer) : Integer IS
+    BEGIN
+        IF b > 0 THEN
+            RETURN b;
+        END IF
+    END METHOD | Es wird nicht immer ein RETURN erreicht
+
+    METHOD main IS
+    BEGIN
+    END METHOD
+END CLASS

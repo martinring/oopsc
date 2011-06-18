@@ -1,0 +1,6 @@
+CLASS Main IS
+    METHOD main IS
+    BEGIN
+        RETURN 1; | Methode hat kein Ergebnis
+    END METHOD
+END CLASS
