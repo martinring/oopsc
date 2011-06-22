@@ -25,8 +25,8 @@ object ContextAnalysis {
   def clazz(c: Class): Transform[Class] = for {
     _          <- enter(c, c.attributes ++ c.methods)
     _          <- bind(Variable("SELF", Name(c.name)))
-    attributes <- merge(c.attributes.map(attribute(_)))
-    methods    <- merge(c.methods.map(method(_)))
+    attributes <- merge(c.attributes map attribute)
+    methods    <- merge(c.methods map method)
     _          <- rebind(methods)
     _          <- leave
   } yield Class(c.name, attributes ++ methods) at c
@@ -41,9 +41,9 @@ object ContextAnalysis {
   
   def method(m: Method): Transform[Method] = for {
     _         <- enter(m, m.variables)
-    variables <- merge(m.variables.map(variable(_)))
+    variables <- merge(m.variables map variable )
     _         <- rebind(variables)
-    body      <- merge(m.body.map(statement(_)))                 
+    body      <- merge(m.body map statement)
     _         <- leave
   } yield Method(m.name, variables, body) at m
     
@@ -58,12 +58,12 @@ object ContextAnalysis {
       
     case w: While => for {
       condition <- expression(w.condition) >>= unBox >>= requireType(boolType)
-      body      <- merge(w.body.map(statement(_)))
+      body      <- merge(w.body map statement)
     } yield While(condition, body) at w
       
     case i: If => for {
       condition <- expression(i.condition) >>= unBox >>= requireType(boolType)
-      body      <- merge(i.body.map(statement(_)))
+      body      <- merge(i.body map statement)
     } yield If(condition, body) at i
     
     case c: Call => for {

@@ -1,27 +1,20 @@
 package de.martinring.oopsc
 
 object Assembler {
-  var code: String = "; OOPS Assembler Code Output ;"
-
-  private def instruction(name: String, a: Any, b: Any) = code += "\n%s %s, %s".format(name, a.toString, b.toString)
-  implicit def comment(u: Unit) = new {
-    def \\ (s: String) = code += "; " + s
-  }
-
+  private def instruction(name: String, a: Any, b: Any): String = "%s %s, %s".format(name, a.toString, b.toString)
+   
   object O
 
-  object R {
-    def update(x: Int, n: Int) = instruction("MRI", R(x), n)
-    def update(x: Int, Ry: R) = instruction("MRR", R(x), Ry)
-    def update(x: Int, m: Address) = instruction("MRM ", this, m)
-    def update(x: Int, c: Condition) = c match {
-      case ISZ(ry) => instruction("ISZ", R(x), ry)
-      case ISP(ry) => instruction("ISP", R(x), ry)
-      case ISN(ry) => instruction("ISN", R(x), ry)
-    }
-  }
-
   case class R(x: Int) {
+    def := (n: Int) = instruction("MRI", this, n)
+    def := (Ry: R) = instruction("MRR", this, Ry)
+    def := (m: Address) = instruction("MRM ", this, m)
+    def := (label: String) = instruction("MRI", this, label)
+    def := (c: Condition) = c match {
+      case ISZ(ry) => instruction("ISZ", this, ry)
+      case ISP(ry) => instruction("ISP", this, ry)
+      case ISN(ry) => instruction("ISN", this, ry)
+    }
     def += (Ry: R) = instruction("ADD", this, Ry)
     def -= (Ry: R) = instruction("SUB", this, Ry)
     def *= (Ry: R) = instruction("MUL", this, Ry)
