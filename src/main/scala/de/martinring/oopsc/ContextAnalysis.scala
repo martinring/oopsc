@@ -6,22 +6,26 @@
 package de.martinring.oopsc
 
 import de.martinring.oopsc.ast._
+import de.martinring.oopsc.ast.Class._
 import de.martinring.oopsc.Transform._
 
+case class Context(declarations: Declarations, size: Int)
+
 object ContextAnalysis {     
-  def program(p: Program): Transform[Program] = for {   
-    _    <- bind(p.main)    
-    _    <- check(p.main.name == "Main")                   (p.main.pos, "The class has to be named Main")
-    _    <- check(p.main.methods.exists(_.name == "main")) (p.main.pos, "Main class doesn't contain a main method")
+  def program(p: Program): Transform[Program] = for {
+    _    <- bind(predefined)
+    _    <- bind(p.main)
+    _    <- require(p.main.name == "Main")                   (Error(p.main.pos, "No main class exists"))
+    _    <- require(p.main.methods.exists(_.name == "main")) (Error(p.main.pos, "Main class doesn't contain a main method"))
     main <- clazz(p.main)
     _    <- rebind(main)
   } yield Program(main) at p
   
-  def clazz(c: Class): Transform[Class] = for {    
+  def clazz(c: Class): Transform[Class] = for {
     _          <- enter(c, c.attributes ++ c.methods)
     _          <- bind(Variable("SELF", Name(c.name)))
     attributes <- merge(c.attributes.map(attribute(_)))
-    methods    <- merge(c.methods.map(method(_)))  
+    methods    <- merge(c.methods.map(method(_)))
     _          <- rebind(methods)
     _          <- leave
   } yield Class(c.name, attributes ++ methods) at c
@@ -42,23 +46,23 @@ object ContextAnalysis {
     _         <- leave
   } yield Method(m.name, variables, body) at m
     
-  def statement(st: Statement): Transform[Statement] = st match {    
+  def statement(st: Statement): Transform[Statement] = st match {
     case r: Read => for {
       operand <- expression(r.operand)
     } yield Read(operand) at r
     
     case w: Write => for {
-      operand <- expression(w.operand)
+      operand <- requireType(intType, w.operand)
     } yield Write(operand) at w
       
     case w: While => for {
-      condition <- expression(w.condition)
-      body <- merge(w.body.map(statement(_)))
+      condition <- requireType(boolType, w.condition)
+      body      <- merge(w.body.map(statement(_)))
     } yield While(condition, body) at w
       
     case i: If => for {
-      condition <- expression(i.condition)
-      body <- merge(i.body.map(statement(_)))
+      condition <- requireType(boolType, i.condition)
+      body      <- merge(i.body.map(statement(_)))
     } yield If(condition, body) at i
     
     case c: Call => for {
@@ -66,20 +70,30 @@ object ContextAnalysis {
     } yield Call(call) at c
     
     case a: Assign => for {
-      left <- expression(a.left)
-      right <- expression(a.right)
+      left  <- expression(a.left)
+      t     <- resolveClass(left.typed)
+      right <- requireType(t, a.right)
     } yield Assign(left, right) at a      
   }  
   
-  def expression(e: Expression): Transform[Expression] = e match {       
-    case u: Unary => for {
-      operand <- expression(u.operand)
-    } yield new Unary(u.operator, operand, operand.typed) at u
+  def expression(e: Expression): Transform[Expression] = e match {
+    case u: Unary => u.operator match {
+      case "-" => for {
+        operand <- requireType(intType, u.operand)
+      } yield new Unary(u.operator, operand, intType.name) at u
+    }
       
-    case b: Binary => for {
-      left  <- expression(b.left)
-      right <- expression(b.right)      
-    } yield new Binary(b.operator, left, right, left.typed) at b
+    case b: Binary => b.operator match {
+      case "+" | "-" | "*" | "/" | "MOD" => for {
+        left  <- requireType(intType, b.left)
+        right <- requireType(intType, b.right)
+      } yield new Binary(b.operator, left, right, intType.name) at b
+
+      case "=" | "#" | "<" | "<=" | ">" | ">=" => for {
+        left  <- requireType(intType, b.left)
+        right <- requireType(intType, b.right)
+      } yield new Binary(b.operator, left, right, boolType.name) at b
+    }
       
     case l: Literal => success(l)
       
@@ -93,8 +107,8 @@ object ContextAnalysis {
     } yield new Access(left, a.right, right.typed) at a
       
     case n: Name => for {
-      d <- resolve(n)
-      _ <- check(!isInstanceOf[Class])(n.pos, n.typed + " is a class")
+      d    <- resolve(n)
+      _    <- require(!isInstanceOf[Class]) (Error(n.pos, n.typed + " is a class"))
       val typed: String = d match {
         case Variable(_,t) => t
         case m: Member => m.typed }      
@@ -108,12 +122,21 @@ object ContextAnalysis {
 
   def resolveClass(name: Name): Transform[Class] = for {
     c <- resolve(name)
-    _ <- check(c.isInstanceOf[Class])(name.pos, name.name + " is not a class")
+    _ <- require(c.isInstanceOf[Class]) (Error(name.pos, name.name + " is not a class"))
   } yield c match { case c: Class => c }    
   
   def resolveMember(typed: String, name: Name): Transform[Member] = for {
     c <- resolveClass(typed)
     val m = c.members.find(_.name == name.name)
-    _ <- check(m.isDefined)(name.pos, name.name + " is not a member of type " + typed)
-  } yield m.get    
+    _ <- require(m.isDefined)           (Error(name.pos, name.name + " is not a member of type " + typed))
+  } yield m.get
+
+  def requireType(t: Class, expr: Expression): Transform[Expression] = for {
+    expr   <- expression(expr)
+    t2     <- resolveClass(expr.typed)
+    result <- if (t == t2) success(expr)
+         else if (box.get(t2).exists(_ == t)) success(Box(expr, t.name))
+         else if (unBox.get(t2).exists(_ == t)) success(UnBox(expr, t.name))
+            else fail(Error(expr.pos, "type mismatch\n    expected: %s\n    found: %s".format(t.name, expr.typed)))
+  } yield result
 }

@@ -67,8 +67,8 @@ package object parsing extends TokenParsers {
       literal ~ ("." ~ name *)                            ^^ { case lit~vs => vs.foldLeft(lit){ case (l,(o~r)) => Access(l, r) at o }})
 
   def literal: Parser[Expression] = positioned (
-      number                                              ^^ { x => Literal(x, Class.Int.name) }
-    | "NULL"                                              ^^^{ Literal(0, Class.Null.name) }
+      number                                              ^^ { x => Literal(x, Class.intType.name) }
+    | "NULL"                                              ^^^{ Literal(0, Class.nullType.name) }
     | "SELF"                                              ^^^{ Name("SELF") }
     | "NEW" ~> name                                       ^^ { x => New(x) at x }
     | "(" ~> expr <~ ")"

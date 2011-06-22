@@ -40,6 +40,9 @@ case class Failure(messages: List[Message]) extends Failable[Nothing] {
 
 object Failable {
   def fail(msg: Message) = Failure(List(msg))
+  def success[A](a: A): Failable[A] = Success(a)
+
+  def require(cond: Boolean)(msg: Message) = if (cond) Success(()) else fail(msg)
   
   def merge[T](list: List[Failable[T]]) = list.foldRight(Success(Nil): Failable[List[T]]){
     case (a, b) if a.isInstanceOf[Failure] || b.isInstanceOf[Failure] => Failure(a.messages ++ b.messages)

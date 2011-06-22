@@ -70,9 +70,9 @@ object Output {
     case n@New(newType) => pos(n) + "NEW " + name(newType)
     case a@Access(left: Expression, right: Name, t) => pos(a) + "ACCESS" + typed(t) + indent(left, right)
     case n: Name => pos(n) + name(n) + typed(n.typed)
-    case b@Box(expr: Expression, t) => pos(b) + "BOX" + indent(expr)
-    case u@UnBox(expr: Expression, t) => pos(u) + "UNBOX" + indent(expr)
-    case d@DeRef(expr: Expression, t) => pos(d) + "DEREF" + indent(expr)
+    case b@Box(expr: Expression, t) => pos(b) + "BOX" + typed(t) + indent(expr)
+    case u@UnBox(expr: Expression, t) => pos(u) + "UNBOX" + typed(t) + indent(expr)
+    case d@DeRef(expr: Expression, t) => pos(d) + "DEREF" + typed(t) + indent(expr)
   }
 
   def name(n: Name) = n.name

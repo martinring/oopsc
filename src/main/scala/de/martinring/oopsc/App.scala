@@ -77,10 +77,9 @@ object App extends App {
   //  Context analysis
   // -------------------------------------------------------------------------------------------------------------------
 
-  val transform = ContextAnalysis.program(p)
-  val compilation: Program = transform(Scope(Class.Integer)) match {
-    case Success((decls,p), msgs) => msgs.print; p
-    case Errors((decls,p), msgs) => msgs.print; p
+  val compilation: Program = ContextAnalysis.program(p)() match {
+    case Success((c,p), msgs) => msgs.print; p
+    case Errors((c,p), msgs) => msgs.print; p
     case f => f.messages.print; sys.exit()
   }
   if (showContext) {

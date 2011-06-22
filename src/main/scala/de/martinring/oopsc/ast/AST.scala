@@ -18,7 +18,7 @@ package object ast {
   }    
   trait Member extends Declaration { val typed: Name }
   case class Attribute(name: String, typed: Name) extends Member
-  case class Method(name: String, variables: List[Variable], body: List[Statement]) extends Member { val typed = Name(Class.Void.name) }
+  case class Method(name: String, variables: List[Variable], body: List[Statement]) extends Member { val typed = Name(Class.voidType.name) }
   case class Variable(name: String, typed: Name) extends Declaration
   
   trait Statement extends Element
@@ -46,14 +46,16 @@ package object ast {
   case class DeRef(expr: Expression, typed: String) extends Expression
 
   object Class {
-    object Int extends Class("<int>")
-    object Bool extends Class("<bool>")
-    object Void extends Class("<void>")
-    object Null extends Class("<null>")
-    object Integer extends Class("Integer")
+    val intType = Class("<int>")
+    val boolType = Class("<bool>")
+    val voidType = Class("<void>")
+    val nullType = Class("<null>")
+    val integer = Class("Integer")
 
-    val box: Map[Class, Class] = Map(Int -> Integer)
-    val unBox: Map[Class, Class] = box map (_.swap)    
+    val predefined = List(integer, intType, boolType, voidType, nullType)
+    
+    val box: Map[Class, Class] = Map(intType -> integer)
+    val unBox: Map[Class, Class] = Map(integer -> intType)
   }
 
   implicit def stringToName(name: String): Name = Name(name)
