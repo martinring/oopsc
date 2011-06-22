@@ -8,6 +8,7 @@ package de.martinring.oopsc
 import de.martinring.oopsc.ast._
 import de.martinring.oopsc.ast.Class._
 import de.martinring.oopsc.Transform._
+import java.lang.Boolean
 
 case class Context(declarations: Declarations, size: Int)
 
@@ -52,16 +53,16 @@ object ContextAnalysis {
     } yield Read(operand) at r
     
     case w: Write => for {
-      operand <- requireType(intType, w.operand)
+      operand <- expression(w.operand) >>= unBox >>= requireType(intType)
     } yield Write(operand) at w
       
     case w: While => for {
-      condition <- requireType(boolType, w.condition)
+      condition <- expression(w.condition) >>= unBox >>= requireType(boolType)
       body      <- merge(w.body.map(statement(_)))
     } yield While(condition, body) at w
       
     case i: If => for {
-      condition <- requireType(boolType, i.condition)
+      condition <- expression(i.condition) >>= unBox >>= requireType(boolType)
       body      <- merge(i.body.map(statement(_)))
     } yield If(condition, body) at i
     
@@ -72,26 +73,26 @@ object ContextAnalysis {
     case a: Assign => for {
       left  <- expression(a.left)
       t     <- resolveClass(left.typed)
-      right <- requireType(t, a.right)
+      right <- expression(a.right) >>= box >>= requireType(t)
     } yield Assign(left, right) at a      
   }  
   
   def expression(e: Expression): Transform[Expression] = e match {
     case u: Unary => u.operator match {
       case "-" => for {
-        operand <- requireType(intType, u.operand)
+        operand  <- expression(u.operand) >>= unBox >>= requireType(intType)
       } yield new Unary(u.operator, operand, intType.name) at u
     }
       
     case b: Binary => b.operator match {
       case "+" | "-" | "*" | "/" | "MOD" => for {
-        left  <- requireType(intType, b.left)
-        right <- requireType(intType, b.right)
+        left  <- expression(b.left) >>= unBox >>= requireType(intType)
+        right <- expression(b.right) >>= unBox >>= requireType(intType)
       } yield new Binary(b.operator, left, right, intType.name) at b
 
       case "=" | "#" | "<" | "<=" | ">" | ">=" => for {
-        left  <- requireType(intType, b.left)
-        right <- requireType(intType, b.right)
+        left  <- expression(b.left) >>= unBox >>= requireType(intType)
+        right <- expression(b.right) >>= unBox >>= requireType(intType)
       } yield new Binary(b.operator, left, right, boolType.name) at b
     }
       
@@ -118,6 +119,8 @@ object ContextAnalysis {
         case _ => name
       }
     } yield node
+
+    case x => success(x)
   } 
 
   def resolveClass(name: Name): Transform[Class] = for {
@@ -131,12 +134,32 @@ object ContextAnalysis {
     _ <- require(m.isDefined)           (Error(name.pos, name.name + " is not a member of type " + typed))
   } yield m.get
 
-  def requireType(t: Class, expr: Expression): Transform[Expression] = for {
-    expr   <- expression(expr)
+  def box(expr: Expression): Transform[Expression] = for {
+    t2   <- resolveClass(expr.typed)
+    lv   <- lValue(expr)
+  } yield Class.box.get(t2).map(t => Box(expr, t.name))
+               .getOrElse(if (lv) DeRef(expr, expr.typed) else expr)
+
+  def unBox(expr: Expression): Transform[Expression] = for {
+    t2   <- resolveClass(expr.typed)
+    lv   <- lValue(expr)
+    r    <- if (lv) unBox(DeRef(expr, expr.typed))
+            else success(Class.unBox.get(t2).map(t => UnBox(expr, t.name)).getOrElse(expr))
+  } yield r
+
+  def requireType(t: Class)(expr: Expression): Transform[Expression] = for {
     t2     <- resolveClass(expr.typed)
-    result <- if (t == t2) success(expr)
-         else if (box.get(t2).exists(_ == t)) success(Box(expr, t.name))
-         else if (unBox.get(t2).exists(_ == t)) success(UnBox(expr, t.name))
-            else fail(Error(expr.pos, "type mismatch\n    expected: %s\n    found: %s".format(t.name, expr.typed)))
-  } yield result
+    _      <- require(t == t2) (Error(expr.pos, "type mismatch\n    expected: %s\n    found: %s".format(t.name, expr.typed)))
+  } yield expr
+
+  def lValue(expr: Expression): Transform[Boolean] = expr match {
+    case n: Name => for {
+        decl <- resolve(n)
+      } yield decl match {
+        case _:Attribute => true
+        case _:Variable => true
+        case _ => false
+      }
+    case _ => success(false)
+  }
 }

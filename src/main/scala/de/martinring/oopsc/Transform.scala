@@ -19,6 +19,8 @@ trait Transform[A] {
 
   def flatMap[B](f: A => Transform[B]): Transform[B] = transform(
     apply(_).flatMap { case (c,a) => f(a)(c) })
+
+  def >>=[B](f: A => Transform[B]): Transform[B] = flatMap(f)
 }
 
 object Transform {
