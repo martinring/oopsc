@@ -10,9 +10,9 @@ import de.martinring.oopsc.ast.Class._
 import de.martinring.oopsc.Transform._
 import java.lang.Boolean
 
-case class Context(declarations: Declarations, size: Int)
+case class Context(declarations: Declarations, currentType: String)
 
-object ContextAnalysis {     
+object ContextAnalysis {
   def program(p: Program): Transform[Program] = for {
     _    <- bind(predefined)
     _    <- bind(p.main)
@@ -24,24 +24,24 @@ object ContextAnalysis {
   
   def clazz(c: Class): Transform[Class] = for {
     _          <- enter(c, c.attributes ++ c.methods)
-    _          <- bind(Variable("SELF", Name(c.name)))
-    attributes <- merge(c.attributes map attribute)
-    methods    <- merge(c.methods map method)
+    attributes <- merge(c.attributes.zipWithIndex.map{ case (a,o) => attribute(a,o) })
+    methods    <- merge(c.methods map method(c))
     _          <- rebind(methods)
     _          <- leave
   } yield Class(c.name, attributes ++ methods) at c
   
-  def attribute(a: Attribute): Transform[Attribute] = for {
+  def attribute(a: Attribute, o: Int): Transform[Attribute] = for {
     _ <- resolveClass(a.typed)
-  } yield a
+  } yield a.copy(offset = o)
   
-  def variable(v: Variable): Transform[Variable] = for {
+  def variable(v: Variable, o: Int): Transform[Variable] = for {
     _ <- resolveClass(v.typed)    
-  } yield v
+  } yield v.copy(offset = o)
   
-  def method(m: Method): Transform[Method] = for {
+  def method(self: Class)(m: Method): Transform[Method] = for {
     _         <- enter(m, m.variables)
-    variables <- merge(m.variables map variable )
+    _         <- bind(Variable("SELF", self.name, -2))
+    variables <- merge(m.variables.zipWithIndex.map{ case (v,o) => variable(v,o) })
     _         <- rebind(variables)
     body      <- merge(m.body map statement)
     _         <- leave
@@ -111,7 +111,7 @@ object ContextAnalysis {
       d    <- resolve(n)
       _    <- require(!isInstanceOf[Class]) (Error(n.pos, n.typed + " is a class"))
       val typed: String = d match {
-        case Variable(_,t) => t
+        case Variable(_,t,_) => t
         case m: Member => m.typed }      
       val name = new Name(n.name, typed) at n
       val node = d match {
@@ -122,17 +122,6 @@ object ContextAnalysis {
 
     case x => success(x)
   } 
-
-  def resolveClass(name: Name): Transform[Class] = for {
-    c <- resolve(name)
-    _ <- require(c.isInstanceOf[Class]) (Error(name.pos, name.name + " is not a class"))
-  } yield c match { case c: Class => c }    
-  
-  def resolveMember(typed: String, name: Name): Transform[Member] = for {
-    c <- resolveClass(typed)
-    val m = c.members.find(_.name == name.name)
-    _ <- require(m.isDefined)           (Error(name.pos, name.name + " is not a member of type " + typed))
-  } yield m.get
 
   def box(expr: Expression): Transform[Expression] = for {
     t2   <- resolveClass(expr.typed)

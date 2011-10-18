@@ -48,7 +48,7 @@ object Failable {
     case (a, b) if a.isInstanceOf[Failure] || b.isInstanceOf[Failure] => Failure(a.messages ++ b.messages)
     case (a, Errors(tail,ms))                                         => Errors(a.get :: tail, a.messages ++ ms)
     case (Errors(head, ms), b)                                        => Errors(head :: b.get, ms ++ b.messages)
-    case (Success(head, ms), Success(tail,ms2))                       => Success(head :: tail, ms ++ ms2)
+    case (Success(head, ms), Success(tail,ms2))                       => Success(head :: tail, ms ++ ms2)    
   }
   
   implicit def pimpOption[T](opt: Option[T]) = new {

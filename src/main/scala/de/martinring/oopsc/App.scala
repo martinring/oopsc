@@ -77,14 +77,14 @@ object App extends App {
   //  Context analysis
   // -------------------------------------------------------------------------------------------------------------------
 
-  val compilation: Program = ContextAnalysis.program(p)() match {
-    case Success((c,p), msgs) => msgs.print; p
-    case Errors((c,p), msgs) => msgs.print; p
+  val compilation = ContextAnalysis.program(p)() match {
+    case Success(p, msgs) => msgs.print; p
+    case Errors(p, msgs) => msgs.print; p
     case f => f.messages.print; sys.exit()
   }
   if (showContext) {
     section("Results of the Context Analysis")
-    Output(compilation)
+    Output(compilation._2)
   }
   
     
@@ -97,5 +97,5 @@ object App extends App {
   //  TODO: Code generation
   // -------------------------------------------------------------------------------------------------------------------
 
-  println(assembler.Code.generate(compilation)().get._2)
+    println(assembler.Code.generate(compilation._2)(compilation._1))
 }

@@ -1,7 +1,7 @@
 package de.martinring.oopsc
 
 object Assembler {
-  private def instruction(name: String, a: Any, b: Any): String = "%s %s, %s".format(name, a.toString, b.toString)
+  private def instruction(name: String, a: Any, b: Any): String = "%s %s, %s;".format(name, a.toString, b.toString)
    
   object O
 

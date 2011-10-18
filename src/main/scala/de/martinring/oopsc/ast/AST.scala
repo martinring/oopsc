@@ -9,17 +9,19 @@ import scala.util.parsing.input.Positional
  */
 package object ast {
   trait Element extends Positional
-
+  
   case class Program(main: Class) extends Element
-
+  
   trait Declaration extends Element { val name: String }
+  
   case class Class(name: String, members: List[Member] = Nil) extends Declaration {    
     val (attributes, methods) = (members.collect{ case v: Attribute => v }, members.collect{ case m: Method => m })
   }    
+  
   trait Member extends Declaration { val typed: Name }
-  case class Attribute(name: String, typed: Name) extends Member
+  case class Attribute(name: String, typed: Name, offset: Int = 0) extends Member
   case class Method(name: String, variables: List[Variable], body: List[Statement]) extends Member { val typed = Name(Class.voidType.name) }
-  case class Variable(name: String, typed: Name) extends Declaration
+  case class Variable(name: String, typed: Name, offset: Int = 0) extends Declaration
   
   trait Statement extends Element
   case class Read(operand: Expression) extends Statement
@@ -45,7 +47,9 @@ package object ast {
   case class UnBox(expr: Expression, typed: String) extends Expression
   case class DeRef(expr: Expression, typed: String) extends Expression
 
-  object Class {
+  object Class {        
+    val headerSize = 0
+    
     val intType = Class("<int>")
     val boolType = Class("<bool>")
     val voidType = Class("<void>")

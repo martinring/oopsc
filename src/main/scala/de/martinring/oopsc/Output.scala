@@ -54,8 +54,8 @@ object Output {
     case m@Method(name, vars, body) =>
       pos(m) + "METHOD " + name + indent(noPos + "VARIABLES" + indent(vars :_*),
                                          noPos + "BODY" + indent(body :_*))
-    case v@Variable(name, t) => pos(v) + name + ": " + this.name(t)
-    case a@Attribute(name, t) => pos(a) + name + ": " + this.name(t)
+    case v@Variable(name, t, offset) => pos(v) + name + ": " + this.name(t)
+    case a@Attribute(name, t, offset) => pos(a) + name + ": " + this.name(t)
       
     case r@Read(operand) => pos(r) + "READ" + indent(operand)
     case w@Write(operand) => pos(w) + "WRITE" + indent(operand)
@@ -81,4 +81,8 @@ object Output {
     case Name("?",_) => ""
     case _ => ": " + t.name
   }
+  
+  def declarations(decls: Declarations): String = decls.level.map {
+    case (name, decl) => name + indent(declarations(decls.enter(name)))      
+  }.mkString("\n")
 }

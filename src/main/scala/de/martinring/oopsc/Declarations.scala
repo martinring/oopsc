@@ -14,6 +14,11 @@ case class Declarations(
   parent: Option[Declarations] = None, 
   children: Map[String, Declarations] = Map.empty) {
   
+  def top: Declarations = parent.map(_.top) getOrElse this      
+  
+  def enterType(n: String) = 
+    top.children.get(n).map(_.copy(parent = Some(this))) orFail Error(NoPosition, "Unknown Type")
+  
   def enter(n: String) = 
     children.getOrElse(n, Declarations(name = n, parent = Some(this)))
   
@@ -33,7 +38,7 @@ case class Declarations(
   
   def rebind(decls: List[Declaration]): Failable[Declarations] =
     success(copy(level = level ++ decls.map(x => x.name -> x)))
-
+  
   def apply(name: Name): Failable[Declaration] = level.get(name.name) match {
     case Some(x) => success(x)
     case None => parent match {
