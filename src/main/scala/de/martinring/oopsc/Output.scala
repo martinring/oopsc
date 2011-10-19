@@ -3,13 +3,18 @@ package de.martinring.oopsc
 import scala.io.Source
 import de.martinring.oopsc.ast._
 import de.martinring.oopsc.parsing.Lexical._
+import de.martinring.oopsc.assembler.Code
 import util.parsing.input.Positional
 import com.sun.org.apache.bcel.internal.classfile.LocalVariable
 
 /*
+ * Object for formatting internal data structures to be human readable
  * @ author Martin Ring
  */
 object Output {
+  /*
+   * Print tokens
+   */
   def apply(scanner: Scanner) {
     def p(scanner: Scanner) {
       if (scanner.first != EOF) {
@@ -23,29 +28,32 @@ object Output {
     println
   }
 
+  /*
+   * Print abstract syntax tree
+   */
   def apply(e: Element) {
     println(" Line | Col. | Parsed Element ")
     println("------+------+-----------------------------------------------------------------")
     println(element(e))
     println
-  }
+  }  
 
   val lf = "\n"
 
-  def indent(s: Any*): String =
+  private def indent(s: Any*): String =
     s.map {
       case e: Element => lf + element(e).split(lf).map{x => val (l,r) = x.splitAt(noPos.length); l + ". " + r}.mkString(lf)
       case s => lf + s.toString.split(lf).map{x => val (l,r) = x.splitAt(noPos.length); l + ". " + r}.mkString(lf)
     }.mkString
 
-  def pos(element: Positional): String = (element.pos.line, element.pos.column) match {
+  private def pos(element: Positional): String = (element.pos.line, element.pos.column) match {
     case (0,0) => noPos
     case (l,c) => " %-5s| %-5s| ".format(l,c)
   }
 
-  val noPos = "      |      | "
+  private val noPos = "      |      | "
 
-  def element(el: Element): String = el match {
+  private def element(el: Element): String = el match {
     case Program(main) => noPos + "PROGRAM" + indent(main)
       
     case c: Class =>
@@ -68,21 +76,17 @@ object Output {
     case b@Binary(op, left, right, t) => pos(b) + delimiters(op) + typed(t) + indent(left, right)
     case l@Literal(value, t) => pos(l) + value + typed(t)
     case n@New(newType) => pos(n) + "NEW " + name(newType)
-    case a@Access(left: Expression, right: Name, t) => pos(a) + "ACCESS" + typed(t) + indent(left, right)
+    case a@Access(left, right, t, lv) => pos(a) + "ACCESS" + typed(t) + indent(left, right)
     case n: Name => pos(n) + name(n) + typed(n.typed)
     case b@Box(expr: Expression, t) => pos(b) + "BOX" + typed(t) + indent(expr)
     case u@UnBox(expr: Expression, t) => pos(u) + "UNBOX" + typed(t) + indent(expr)
     case d@DeRef(expr: Expression, t) => pos(d) + "DEREF" + typed(t) + indent(expr)
   }
 
-  def name(n: Name) = n.name
+  private def name(n: Name) = n.name
 
-  def typed(t: Name) = t match {    
-    case Name("?",_) => ""
-    case _ => ": " + t.name
+  private def typed(t: Name) = t match {    
+    case Name("?",_,lv) => ""
+    case _ => ": " + (if (t.lvalue) "REF " + t.name else t.name)
   }
-  
-  def declarations(decls: Declarations): String = decls.level.map {
-    case (name, decl) => name + indent(declarations(decls.enter(name)))      
-  }.mkString("\n")
 }

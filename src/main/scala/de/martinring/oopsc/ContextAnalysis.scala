@@ -10,9 +10,12 @@ import de.martinring.oopsc.ast.Class._
 import de.martinring.oopsc.Transform._
 import java.lang.Boolean
 
-case class Context(declarations: Declarations, currentType: String)
+case class Context(declarations: Declarations, currentType: String = "", currentMethod: String = "", counter: Int = 0)
 
-object ContextAnalysis {
+/*
+ * Object for the contextual analysis. Utilizes the @see Transform monad.
+ */
+object ContextAnalysis {  
   def program(p: Program): Transform[Program] = for {
     _    <- bind(predefined)
     _    <- bind(p.main)
@@ -24,26 +27,30 @@ object ContextAnalysis {
   
   def clazz(c: Class): Transform[Class] = for {
     _          <- enter(c, c.attributes ++ c.methods)
-    attributes <- merge(c.attributes.zipWithIndex.map{ case (a,o) => attribute(a,o) })
-    methods    <- merge(c.methods map method(c))
+    attributes <- sequence(c.attributes map attribute )
+    o          <- incOffset(0)    
+    methods    <- sequence(c.methods map method(c))
     _          <- rebind(methods)
     _          <- leave
-  } yield Class(c.name, attributes ++ methods) at c
+  } yield Class(c.name, attributes ++ methods, Some(o)) at c
   
-  def attribute(a: Attribute, o: Int): Transform[Attribute] = for {
+  def attribute(a: Attribute): Transform[Attribute] = for {
+    o <- incOffset(1)
     _ <- resolveClass(a.typed)
   } yield a.copy(offset = o)
   
-  def variable(v: Variable, o: Int): Transform[Variable] = for {
-    _ <- resolveClass(v.typed)    
+  def variable(v: Variable): Transform[Variable] = for {
+    o <- incOffset(1)
+    _ <- resolveClass(v.typed)        
   } yield v.copy(offset = o)
   
   def method(self: Class)(m: Method): Transform[Method] = for {
-    _         <- enter(m, m.variables)
+    _         <- enter(m, m.variables)    
     _         <- bind(Variable("SELF", self.name, -2))
-    variables <- merge(m.variables.zipWithIndex.map{ case (v,o) => variable(v,o) })
+    _         <- incOffset(1) // skip return address
+    variables <- sequence(m.variables map variable)
     _         <- rebind(variables)
-    body      <- merge(m.body map statement)
+    body      <- sequence(m.body map statement)
     _         <- leave
   } yield Method(m.name, variables, body) at m
     
@@ -58,12 +65,12 @@ object ContextAnalysis {
       
     case w: While => for {
       condition <- expression(w.condition) >>= unBox >>= requireType(boolType)
-      body      <- merge(w.body map statement)
+      body      <- sequence(w.body map statement)
     } yield While(condition, body) at w
       
     case i: If => for {
       condition <- expression(i.condition) >>= unBox >>= requireType(boolType)
-      body      <- merge(i.body map statement)
+      body      <- sequence(i.body map statement)
     } yield If(condition, body) at i
     
     case c: Call => for {
@@ -72,6 +79,7 @@ object ContextAnalysis {
     
     case a: Assign => for {
       left  <- expression(a.left)
+      _     <- require(left.lvalue) (Error(left.pos, "l-value expected"))
       t     <- resolveClass(left.typed)
       right <- expression(a.right) >>= box >>= requireType(t)
     } yield Assign(left, right) at a      
@@ -103,36 +111,39 @@ object ContextAnalysis {
     } yield n
       
     case a: Access => for {
-      left  <- expression(a.left)
-      right <- resolveMember(left.typed, a.right)
-    } yield new Access(left, a.right, right.typed) at a
+      left  <- expression(a.left) >>= box
+      right <- resolveMember(left.typed, a.right)      
+    } yield new Access(
+      left, 
+      Name(
+        right.name,
+        right.typed,
+        !right.isInstanceOf[Method]),
+      right.typed,
+      !right.isInstanceOf[Method]) at a
       
     case n: Name => for {
       d    <- resolve(n)
-      _    <- require(!isInstanceOf[Class]) (Error(n.pos, n.typed + " is a class"))
-      val typed: String = d match {
-        case Variable(_,t,_) => t
-        case m: Member => m.typed }      
-      val name = new Name(n.name, typed) at n
-      val node = d match {
-        case _: Attribute => Access(Name("SELF"), name, typed)
-        case _ => name
-      }
-    } yield node
+      _    <- require(!isInstanceOf[Class]) (Error(n.pos, n.typed + " is a class"))        
+      r    <- d match {
+        case m: Member => for {
+            c <- currentType      
+            l <- expression(Name("SELF", c)) >>= box
+          } yield Access(l, Name(n.name, m.typed) at n, m.typed)
+        case Variable(_,t,_) => success(Name(n.name, t, true) at n)
+    }} yield r
 
     case x => success(x)
   } 
 
   def box(expr: Expression): Transform[Expression] = for {
     t2   <- resolveClass(expr.typed)
-    lv   <- lValue(expr)
   } yield Class.box.get(t2).map(t => Box(expr, t.name))
-               .getOrElse(if (lv) DeRef(expr, expr.typed) else expr)
+               .getOrElse(if (expr.lvalue) DeRef(expr, expr.typed) else expr)
 
   def unBox(expr: Expression): Transform[Expression] = for {
-    t2   <- resolveClass(expr.typed)
-    lv   <- lValue(expr)
-    r    <- if (lv) unBox(DeRef(expr, expr.typed))
+    t2   <- resolveClass(expr.typed)    
+    r    <- if (expr.lvalue) unBox(DeRef(expr, expr.typed))
             else success(Class.unBox.get(t2).map(t => UnBox(expr, t.name)).getOrElse(expr))
   } yield r
 
@@ -140,15 +151,4 @@ object ContextAnalysis {
     t2     <- resolveClass(expr.typed)
     _      <- require(t == t2) (Error(expr.pos, "type mismatch\n    expected: %s\n    found: %s".format(t.name, expr.typed)))
   } yield expr
-
-  def lValue(expr: Expression): Transform[Boolean] = expr match {
-    case n: Name => for {
-        decl <- resolve(n)
-      } yield decl match {
-        case _:Attribute => true
-        case _:Variable => true
-        case _ => false
-      }
-    case _ => success(false)
-  }
 }

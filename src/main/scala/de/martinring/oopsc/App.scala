@@ -23,8 +23,8 @@ object App extends App {
   "    -s       Show results of syntactical analysis",
   "    -c       Show results of context analysis",
   "    -i       Show identifiers",
-  "    -hs <n>  Set heap size to <n> (default is 50)",
-  "    -ss <n>  Set stack size to <n> (default is 250)")
+  "    -hs <n>  Set heap size to <n> (default is 100)",
+  "    -ss <n>  Set stack size to <n> (default is 50)")
   
   import arguments._
 
@@ -34,8 +34,8 @@ object App extends App {
   val showSymbols = flag("l")
   val showIdentifiers = flag("i")
   val showSyntax = flag("s")
-  val heapSize = option("hs").flatMap(_.toIntOption) getOrElse 50
-  val stackSize = option("ss").flatMap(_.toIntOption) getOrElse 250
+  val heapSize = option("hs").flatMap(_.toIntOption) getOrElse 100
+  val stackSize = option("ss").flatMap(_.toIntOption) getOrElse 50
   val inFile = plain.map(_.open) getOrElse fail("Failure: No source file specified")
   val outFile = plain.map(_.open)
 
@@ -80,22 +80,33 @@ object App extends App {
   val compilation = ContextAnalysis.program(p)() match {
     case Success(p, msgs) => msgs.print; p
     case Errors(p, msgs) => msgs.print; p
-    case f => f.messages.print; sys.exit()
+    case f => f.messages.print; sys.exit(-1)
   }
   if (showContext) {
     section("Results of the Context Analysis")
     Output(compilation._2)
-  }
-  
-    
+  }  
+      
   // -------------------------------------------------------------------------------------------------------------------
   //  TODO: Optimization
   // -------------------------------------------------------------------------------------------------------------------
 
     
   // -------------------------------------------------------------------------------------------------------------------
-  //  TODO: Code generation
+  //  Code generation
   // -------------------------------------------------------------------------------------------------------------------
 
-    println(assembler.Code.generate(compilation._2)(compilation._1))
+  val code = assembler.Code.generate(compilation._2)(compilation._1) match {
+    case Success(p, msgs) => msgs.print; p
+    case Errors(p, msgs) => msgs.print; p
+    case f => f.messages.print; sys.exit(-1)
+  } 
+  
+  outFile match {
+    case Some(f) => 
+      val p = new java.io.PrintWriter(f)
+      p.println(code._2)
+      p.close()
+    case None => println(code._2)
+  }
 }

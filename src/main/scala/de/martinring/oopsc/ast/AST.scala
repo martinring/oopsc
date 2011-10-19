@@ -14,7 +14,7 @@ package object ast {
   
   trait Declaration extends Element { val name: String }
   
-  case class Class(name: String, members: List[Member] = Nil) extends Declaration {    
+  case class Class(name: String, members: List[Member] = Nil, size: Option[Int] = None) extends Declaration {    
     val (attributes, methods) = (members.collect{ case v: Attribute => v }, members.collect{ case m: Method => m })
   }    
   
@@ -31,13 +31,13 @@ package object ast {
   case class Call(call: Expression) extends Statement
   case class Assign(left: Expression, right: Expression) extends Statement
 
-  trait Expression extends Element { val typed: String }
+  trait Expression extends Element { val typed: String; val lvalue: Boolean = false }
   case class Unary(operator: String, operand: Expression, typed: String = "?") extends Expression
   case class Binary(operator: String, left: Expression, right: Expression, typed: String  = "?") extends Expression
   case class Literal(value: Int, typed: String) extends Expression
   case class New(typed: String) extends Expression
-  case class Access(left: Expression, right: Name, typed: String = "?") extends Expression
-  case class Name(name: String, typed: String = "?") extends Expression    
+  case class Access(left: Expression, right: Name, typed: String = "?", override val lvalue: Boolean = false) extends Expression
+  case class Name(name: String, typed: String = "?", override val lvalue: Boolean = false) extends Expression    
 
   // -------------------------------------------------------------------------------------------------------------------
   //  Structures for contextual analysis
@@ -54,7 +54,7 @@ package object ast {
     val boolType = Class("<bool>")
     val voidType = Class("<void>")
     val nullType = Class("<null>")
-    val integer = Class("Integer")
+    val integer = Class("Integer", Nil, Some(1))
 
     val predefined = List(integer, intType, boolType, voidType, nullType)
     

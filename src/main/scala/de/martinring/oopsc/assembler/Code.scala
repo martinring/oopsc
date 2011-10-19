@@ -5,7 +5,9 @@ import de.martinring.oopsc.Assembler._
 import de.martinring.oopsc._
 import de.martinring.oopsc.Transform._
 
-
+/*
+ * Code generation
+ */
 object  Code {
   val lf = "\n"
   def lines(ls: String*) = ls.mkString(lf)
@@ -25,29 +27,37 @@ object  Code {
 
   def generate(element: Element): Transform[String] = element match {
     case Program(main) => for {
-      main <- generate(main)
+      mainClass <- generate(main)
+      main      <- generate(Access(New("Main"), "main"))      
     } yield lines(
       "; Start-Code: initialize registers",
       ( R(1) := 1     ) |> "R1 is allways 1",
       ( R(2) := stack ) |> "R2 points to stack",
       ( R(4) := heap  ) |> "R4 points to next free position on Heap",
       ( indent(main)  ),
-      ( R(0) := end   ) |> "exit program")
+      ( R(0) := end   ) |> "exit program",
+      ( indent(mainClass) ),
+      ( stack + ":;" |> "Start of stack" ),
+      ( "DAT " + App.stackSize + ", 0;" ),
+      ( heap + ":;" |> "Start of heap" ),
+      ( "DAT " + App.heapSize + ", 0;" ),
+      ( end + ":;" |> "End of program" ))
 
     case c: Class => for {
       _       <- enter(c)
-      methods <- merge(c.methods map generate)
+      methods <- sequence(c.methods map generate)
       _       <- leave
     } yield section("CLASS " + c.name)(methods :_*)      
 
     case m: Method => for {
       _     <- enter(m)
-      val label = "blub" //TODO
-      body  <- merge(m.body map generate)     
+      c     <- currentType
+      val label = c + "_" + m.name
+      body  <- sequence(m.body map generate)     
       _     <- leave
     } yield lines(
       section("METHOD " + m.name)(      
-        ( label ),
+        ( label + ":" ),
         ( R(2) += R(1) ),
         ( Address(R(2)) = R(3) ) |> "Save old stack frame",
         ( R(3) := R(2) ) |> "Current position on stack is new frame",
@@ -98,13 +108,13 @@ object  Code {
       
     case While(condition, body) => for {
       condition <- generate(condition)
-      body <- merge(body map generate)
-      val whileLabel = "TODO: LABEL" // TODO!
-      val endLabel = "TODO: LABEL" // TODO!      
+      body <- sequence(body map generate)
+      whileLabel <- nextLabel
+      endLabel <- nextLabel
     } yield lines(
       section("WHILE")(
-        whileLabel,
-        condition,
+        whileLabel + ":",
+        condition + ":",
         ( R(5) := Address(R(2)) ) |> "Get condition from stack",
         ( R(2) -= R(1) ),
         ( "ISZ R5, R5;" ) |> "if 0 then",
@@ -112,12 +122,12 @@ object  Code {
       ),
       section("DO")(body :_*),
       "MRI R0, " + whileLabel,
-      endLabel)
+      endLabel + ":")
       
     case If(condition, body) => for {
       condition <- generate(condition)
-      body <- merge(body map generate)
-      val endLabel = "TODO: LABEL" // TODO! 
+      body <- sequence(body map generate)
+      endLabel <- nextLabel
     } yield lines(
       section("IF")(
         condition,
@@ -126,7 +136,7 @@ object  Code {
         ( "ISZ R5, R5;" ) |> "if 0 then",
         ( "JPC R5, " + endLabel +";" ) |> "jump to END IF"),
       section("THEN")(body :_*),
-      endLabel        
+      endLabel + ":"
       )
       
     case Call(call) => for {
@@ -137,6 +147,8 @@ object  Code {
       left <- generate(left)
       right <- generate(right)
     } yield section("ASSIGNMENT")(
+      ( left ),
+      ( right ),
       ( R(5) := Address(R(2)) ) |> "Take right value from stack",
       ( R(2) -= R(1) ),
       ( R(6) := Address(R(2)) ) |> "Take ref to left val from stack",
@@ -164,6 +176,8 @@ object  Code {
       left <- generate(left)
       right <- generate(right)
     } yield section("BINARY " + operator)(
+      left,
+      right,
       R(5) := Address(R(2)),
       R(2) -= R(1),
       R(6) := Address(R(2)),
@@ -216,59 +230,41 @@ object  Code {
       clazz <- resolveClass(typed)
     } yield section("NEW " + typed.name)(
         R(2) += R(1),
-        (Address(R(2)) = R(4)) |> "Put reference to new object on stack",
-        R(5) := 0 // TODO: Object SIze
+        (Address(R(2)) = R(4))   |> "Put reference to new object on stack",
+        R(5) := clazz.size.get,
+        (R(4) += R(5))           |> "Inc heap"
       )
     
-    case Access(left, right, typed) => for {
-      left  <- generate(left)
-      t     <- resolveClass(left.typed)
-      _     <- enterType(t)
-      right <- generate(right)
-      _     <- leave
-    } yield lines(
-      left,
-      right
-    )
-    
-    case Name(name, typed) => for {
+    case Access(left, right, typed, lvalue) => for {
+      l     <- generate(left)
+      t     <- resolveClass(left.typed)      
+      r     <- generateMember(t, right)
+    } yield lines(l,r)
+      
+    case Name(name, typed, lvalue) => for {      
       decl   <- resolve(name)
     } yield decl match {
-      case Variable(name, typed, offset) => section("REF TO VARIABLE " + name)(
-          R(5) := offset,
-          R(5) += R(3),
-          R(2) += R(1),
-          Address(R(2)) = R(5)
-        )
-      case Attribute(name, typed, offset) => section("REF TO ATTRIBUTE " + name)(
-          R(5) := Address(R(2)),
-          R(6) := offset,
-          R(5) += R(6),
-          Address(R(2)) = R(5)
-        )
-      case Method(name, variables, body) => 
-        val returnLabel = "returnLabel" //TODO
-        section("CALL OF METHOD " + name)(
-          R(5) := returnLabel,
-          R(2) += R(1),
-          Address(R(2)) = R(5),
-          R(0) := "label", //TODO
-          returnLabel + ":"
-        )
+        case Variable(name, typed, offset) => section("REF TO VARIABLE " + name)(
+            R(5) := offset,
+            R(5) += R(3),
+            R(2) += R(1),
+            Address(R(2)) = R(5)
+          )
+        case x => error(x.toString)            
     }
       
     case Box(expr, typed) => for {
       newType <- generate(New(typed))
-      expr <- generate(expr)
+      expr    <- generate(expr)
     } yield section("BOX")(
       newType,
       expr,
-      ( R(5) := Address(R(2)) ) |> "Take value from stack",
+      ( R(5) := Address(R(2)) )     |> "Take value from stack",
       ( R(2) -= R(1) ),
-      ( R(6) := Address(R(2)) ) |> "Get reference to new object (stays on the stack)",
+      ( R(6) := Address(R(2)) )     |> "Get reference to new object (stays on the stack)",
       ( R(7) := Class.headerSize ),
-      ( R(6) += R(7) ) |> "Determine location in new object",
-      ( Address(R(6)) = R(5) ) |> "Write value to object"
+      ( R(6) += R(7) )              |> "Determine location in new object",
+      ( Address(R(6)) = R(5) )      |> "Write value to object"
     )
 
     case UnBox(expr, typed) => for {
@@ -277,9 +273,9 @@ object  Code {
       expr,
       ( R(5) := Address(R(2)) ) |> "Get reference to object from stack",
       ( R(6) := Class.headerSize ),
-      ( R(5) += R(6) ) |> "Determine address of value",
+      ( R(5) += R(6) )          |> "Determine address of value",
       ( R(5) := Address(R(5)) ) |> "Read value",
-      ( Address(R(2)) = R(5) ) |> "Write to stack"
+      ( Address(R(2)) = R(5) )  |> "Write to stack"
     )
 
     case DeRef(expr, typed) => for {
@@ -290,5 +286,31 @@ object  Code {
       R(5) := Address(R(5)),
       Address(R(2)) = R(5)
     )   
+    
+    case x => success{x.toString}
   }
+  
+  def generateMember(t: Class, expr: Expression) = for {
+    returnLabel <- nextLabel
+  } yield expr match {
+    case Name(name, typed, lvalue) => 
+      val decl = t.members.find(_.name == name).get
+      decl match {
+        case Attribute(name, typed, offset) => section("REF TO ATTRIBUTE " + name)(
+            R(5) := Address(R(2)),
+            R(6) := offset,
+            R(5) += R(6),
+            Address(R(2)) = R(5)
+          )
+        case Method(name, variables, body) => 
+          section("CALL OF METHOD " + name)(
+            R(5) := returnLabel,
+            R(2) += R(1),
+            Address(R(2)) = R(5),
+            "; static call of " + name,
+            R(0) := t.name + "_" + name,
+            returnLabel + ":"
+          )
+        }
+    }  
 }

@@ -6,7 +6,7 @@ import scala.util.parsing.input.Positional
 /**
  * Global implicits for convenience
  */
-package object oopsc {      
+package object oopsc {        
   implicit def pimpPositional[T <: Positional](p: T) = new {
     def at(other: Positional) = { p.pos = other.pos; p }
   }
