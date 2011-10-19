@@ -14,26 +14,18 @@
 \RequirePackage{graphicx,textcomp,calc,verbatim,amsmath,xcolor,fullpage}
 \RequirePackage{amssymb,listings,enumitem,microtype,hyperref,multicol,caption}
 
-%%%%%%%% Seitengestaltung
-%\oddsidemargin 0pt
-%\evensidemargin 0pt
-%\marginparwidth 48pt
-%\marginparsep 10pt
-%\topmargin -18pt
-%\headheight 12pt
-%\headsep 25pt
-%\footheight 12pt
-%\footskip 30pt
-%\textheight 625pt
-%\textwidth 431pt
 \columnsep 25pt
-%\columnseprule 1px
 
 \linespread{1.05}
 \setlength\parskip{1ex}
 \setlength\parindent{0pt}
 \renewcommand\arraystretch{1.3}
 \raggedbottom
+
+\definecolor{comment}{rgb}{0,.5,0}
+\definecolor{class}{rgb}{0.1686,.5686,6863}
+\definecolor{string}{rgb}{0..6392,0.0824,0.0824}
+\definecolor{light}{gray}{0.9286}
 
 \setlist{itemsep=.25pt,leftmargin=20pt,topsep=.5ex}
 \setlist[2]{leftmargin=*}
@@ -49,7 +41,7 @@
     frenchlinks=false,
     breaklinks=true,
     pdffitwindow=true,
-    pdfauthor={Fynn Feldpausch, Martin Ring}
+    pdfauthor={Martin Ring}
 }
 
 \lstdefinelanguage{scala}{%
@@ -59,32 +51,49 @@
 		implicit, import, lazy, new, object, override, package,%
 		private, protected, requires, sealed, super, this, trait, type,%
 		val, var, with, yield, false, null, true},%
-	sensitive=false,%
+	sensitive=true,%
 	comment=[l]{//},%
 	morecomment=[s]{/*}{*/},%
-	string=[b]",%
+	string=[b]"	
 }
 
-\lstset{%
-	numbers=none,%
+\lstset{%  
+    firstnumber=auto,
 	basicstyle=\small\ttfamily,%
-	framesep=3pt,%
+	numberstyle=\small\ttfamily\color{class},
+	commentstyle=\color{comment},
+	keywordstyle=\color{blue},	
+	framesep=2.5mm,%
+	numbers=left,%
 	aboveskip=15pt,%
 	belowskip=15pt,%
 	captionpos=b,%
+	numbersep=5mm,%	
 	abovecaptionskip=2.5pt,%
 	numberbychapter=true,%
 	breaklines=true,%
+	xleftmargin=10mm,
 	showstringspaces=false,%
-	frame=lines,%
 	lineskip=1.5pt,%
 	tabsize=2,%
-	xleftmargin=.05\linewidth,%
-	xrightmargin=.05\linewidth,%
-	framexleftmargin=.025\linewidth,%
-	framexrightmargin=.025\linewidth,%
-	language=scala%
+	language=scala,%
+	stringstyle=\color{string},
+	identifierstyle=\idstyle,
+	frame=leftline
 }
+
+\makeatletter
+\newcommand*\idstyle{%
+        \expandafter\id@style\the\lst@token\relax
+}
+\def\id@style#1#2\relax{%
+        \ifcat#1\relax\else
+                \ifnum`#1=\uccode`#1%
+                        \color{class}
+                \fi
+        \fi
+}
+\makeatother
 
 \captionsetup[lstlisting]{font=footnotesize,labelfont=sc}
 \captionsetup[table]{font=footnotesize,skip=5.5pt,labelfont=sc}
