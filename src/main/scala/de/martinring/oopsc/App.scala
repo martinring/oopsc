@@ -3,110 +3,122 @@ package de.martinring.oopsc
 import java.io.File
 import io.Source
 import ast._
-import parsing._
-import Failable._
 import de.martinring.util._
-import de.martinring.util.Console._
+import de.martinring.util.console.ConsoleApp
+import java.io._
 
-object App extends App {
+object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
   // -------------------------------------------------------------------------------------------------------------------
   //  Read command line parameters
   // -------------------------------------------------------------------------------------------------------------------
-
-  val arguments = new Arguments(args,
-  "OOPSC Scala Edition - Version 1.0",
-  "",
-  "Usage: java -jar oopsc.jar [-h] [-c] [-l] [-i] [-s] [-hs <n>] [-ss <n>] source [target]",
-  "",
-  "    -h       Show help",
-  "    -l       Show results of lexical analysis",
-  "    -s       Show results of syntactical analysis",
-  "    -c       Show results of context analysis",
-  "    -i       Show identifiers",
-  "    -hs <n>  Set heap size to <n> (default is 100)",
-  "    -ss <n>  Set stack size to <n> (default is 50)")
+  val arguments = new Arguments {
+    import de.martinring.util.Conversions._
+    
+    val showHelp = flag("h", "Show this help")
+    val showSymbols = flag("l", "Show results of lexical analysis")
+    val showSyntax = flag("s", "Show results of syntactical analysis")
+    val showContext = flag("c", "Show results of context analysis")
+    val showVMTs = flag("v", "Show virtual method tables")
+    val heapSize = namedArgument[Int]("hs", "Set heap size to %s (default is 100)") match {
+      case Success(x,_)  => x
+      case _ => 100
+    }
+    val stackSize = namedArgument[Int]("ss", "Set stack size to %s (default is 50)") match {
+      case Success(x, _) => x
+      case _ => 50
+    }
+    val sourceFile = argument[File]("source", "the source file", optional = false) match {
+      case Success(x, _) => x
+      case x =>
+        print("[failure] Source File: ")
+        x.messages.foreach(println(_))
+        exit
+    }
+    val source = Source.fromFile(sourceFile, "UTF-8").mkString
+    val targetFile = argument[String]("target", "the target file", optional = true) match {
+      case Success(x, _) => Some(x)
+      case x => None
+    }
+    val target = targetFile.map(x => new PrintWriter(new File(x)))
+                           .getOrElse(new PrintWriter(new OutputStreamWriter(System.out, "UTF-8")))
+  }
   
-  import arguments._
-
-  if (flag("h")) printUsage()
-
-  val showContext = flag("c")
-  val showSymbols = flag("l")
-  val showIdentifiers = flag("i")
-  val showSyntax = flag("s")
-  val heapSize = option("hs").flatMap(_.toIntOption) getOrElse 100
-  val stackSize = option("ss").flatMap(_.toIntOption) getOrElse 50
-  val inFile = plain.map(_.open) getOrElse fail("Failure: No source file specified")
-  val outFile = plain.map(_.open)
-
-  arguments.finish()
-
-  // Check source and target files
-  if (!inFile.exists) fail("Failure: Source File '%s' does not exist!\n".format(inFile.getName))
-  outFile.map{f =>
-    if (!f.exists() && !f.createNewFile() || !f.canWrite)
-      fail("Failure: Can not write to '%s'!\n".format(f.getAbsolutePath))}
-
-  // Create reader for source file
-  val source = Source.fromFile(inFile, "UTF-8").mkString
-
+  if (!arguments.unrecognized.isEmpty) {
+    println("[failure] Unrecognized arguments (-h for help): " + arguments.unrecognized.mkString(", "))
+  }
+  
+  val t0 = System.nanoTime
+  
   // -------------------------------------------------------------------------------------------------------------------
   //  Lexical analysis
   // -------------------------------------------------------------------------------------------------------------------
-
-  val tokens = new Lexical.Scanner(source)
-  if (showSymbols) {
-    section("Results of the Lexical Analysis")    
+  
+  val tokens = new parsing.Lexical.Scanner(arguments.source)
+  if (arguments.showSymbols) {
+    section("Results of the Lexical Analysis")
     Output(tokens)
   }
-
+  
   // -------------------------------------------------------------------------------------------------------------------
   //  Syntactical analysis
   // -------------------------------------------------------------------------------------------------------------------
 
-  val p: Program = program(tokens) match {
+  val p: Program = parsing.program(tokens) match {
     case s: parsing.Success[Program] => s.result
     case f => println(f); sys.exit()
   }
-  if (showSyntax) {
+  if (arguments.showSyntax) {
     section("Results of the Syntactical Analysis")
     Output(p)
   }
 
+  
   // -------------------------------------------------------------------------------------------------------------------
   //  Context analysis
   // -------------------------------------------------------------------------------------------------------------------
 
-  val compilation = ContextAnalysis.program(p)() match {
+  val compilation = ContextAnalysis.analyse(p)() match {
     case Success(p, msgs) => msgs.print; p
     case Errors(p, msgs) => msgs.print; p
-    case f => f.messages.print; sys.exit(-1)
-  }
-  if (showContext) {
+    case f => f.messages.print; sys.exit()
+  }  
+  if (arguments.showContext) {
     section("Results of the Context Analysis")
     Output(compilation._2)
-  }  
-      
+  }
+  
+  if (arguments.showVMTs) {
+    section("Virtual Method Tables")
+    for ((c,vmt) <- compilation._1.vmts) {
+      println("CLASS " + c)
+      if (vmt.isEmpty) println("  - Empty -")
+      else for ((n,i) <- vmt.zipWithIndex) {
+        println("  " + i + " -> " + n)
+      }
+      println
+    }
+
+  }
+
   // -------------------------------------------------------------------------------------------------------------------
   //  TODO: Optimization
   // -------------------------------------------------------------------------------------------------------------------
 
-    
+  
   // -------------------------------------------------------------------------------------------------------------------
   //  Code generation
   // -------------------------------------------------------------------------------------------------------------------
 
+  //println(compilation._1.declarations.mkString("\n\n"))
+
   val code = assembler.Code.generate(compilation._2)(compilation._1) match {
     case Success(p, msgs) => msgs.print; p
     case Errors(p, msgs) => msgs.print; p
-    case f => f.messages.print; sys.exit(-1)
-  } 
-  
-  outFile match {
-    case Some(f) => 
-      val p = new java.io.PrintWriter(f)
-      p.println(code._2)
-      p.close()
-    case None => println(code._2)
+    case f => f.messages.print; sys.exit
   }
+      
+  code._2.toString().lines.foreach(arguments.target.println(_))       
+  arguments.target.flush()
+  
+  println("[success] total time: " + ((System.nanoTime - t0) / 1000000) + " ms")
 }

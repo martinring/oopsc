@@ -9,59 +9,164 @@ import scala.util.parsing.input.Positional
  */
 package object ast {
   trait Element extends Positional
-  
-  case class Program(main: Class) extends Element
-  
-  trait Declaration extends Element { val name: String }
-  
-  case class Class(name: String, members: List[Member] = Nil, size: Option[Int] = None) extends Declaration {    
-    val (attributes, methods) = (members.collect{ case v: Attribute => v }, members.collect{ case m: Method => m })
-  }    
-  
-  trait Member extends Declaration { val typed: Name }
-  case class Attribute(name: String, typed: Name, offset: Int = 0) extends Member
-  case class Method(name: String, variables: List[Variable], body: List[Statement]) extends Member { val typed = Name(Class.voidType.name) }
-  case class Variable(name: String, typed: Name, offset: Int = 0) extends Declaration
-  
-  trait Statement extends Element
-  case class Read(operand: Expression) extends Statement
-  case class Write(operand: Expression) extends Statement
-  case class While(condition: Expression, body: List[Statement]) extends Statement
-  case class If(condition: Expression, body: List[Statement]) extends Statement
-  case class Call(call: Expression) extends Statement
-  case class Assign(left: Expression, right: Expression) extends Statement
 
-  trait Expression extends Element { val typed: String; val lvalue: Boolean = false }
-  case class Unary(operator: String, operand: Expression, typed: String = "?") extends Expression
-  case class Binary(operator: String, left: Expression, right: Expression, typed: String  = "?") extends Expression
-  case class Literal(value: Int, typed: String) extends Expression
-  case class New(typed: String) extends Expression
-  case class Access(left: Expression, right: Name, typed: String = "?", override val lvalue: Boolean = false) extends Expression
-  case class Name(name: String, typed: String = "?", override val lvalue: Boolean = false) extends Expression    
+  case class Program(classes: List[Class]) extends Element
 
-  // -------------------------------------------------------------------------------------------------------------------
-  //  Structures for contextual analysis
-  // -------------------------------------------------------------------------------------------------------------------
-  
-  case class Box(expr: Expression, typed: String) extends Expression
-  case class UnBox(expr: Expression, typed: String) extends Expression
-  case class DeRef(expr: Expression, typed: String) extends Expression
+  trait Declaration extends Element { val name: Name }
 
-  object Class {        
-    val headerSize = 0
-    
-    val intType = Class("<int>")
-    val boolType = Class("<bool>")
-    val voidType = Class("<void>")
-    val nullType = Class("<null>")
-    val integer = Class("Integer", Nil, Some(1))
+  case class Class(name:       Name,
+                   attributes: List[Variable] = Nil,
+                   methods:    List[Method]   = Nil,
+                   baseType:   Option[Name]   = None,
+                   size: Int = Class.headerSize) extends Declaration
 
-    val predefined = List(integer, intType, boolType, voidType, nullType)
-    
-    val box: Map[Class, Class] = Map(intType -> integer)
-    val unBox: Map[Class, Class] = Map(integer -> intType)
+  case class Method(name:       Name,
+                    parameters: List[Variable],
+                    variables:  List[Variable],
+                    body:       List[Statement],
+                    typed:      Name = Unknown,
+                    index:      Option[Int]) extends Declaration
+
+  case class Variable(name:  Name,
+                      typed: Name,
+                      offset: Option[Int],
+                      isAttribute: Boolean) extends Declaration
+
+  trait Statement extends Element {
+    def returns = false
   }
 
-  implicit def stringToName(name: String): Name = Name(name)
-  implicit def nameToString(name: Name): String = name.name
+  case class Read(operand: Expression) extends Statement
+
+  case class Write(operand: Expression) extends Statement
+
+  case class While(condition: Expression,
+                   body:      List[Statement]) extends Statement
+
+  case class If(condition: Expression,
+                body:      List[Statement],
+                elseBody:  List[Statement]) extends Statement {
+    override def returns = body.exists(_.returns) && elseBody.exists(_.returns)
+  }
+
+  case class Call(call: Expression) extends Statement
+
+  case class Assign(left: Expression, right: Expression) extends Statement
+
+  case class Return(value: Option[Expression] = None) extends Statement {
+    override def returns = true
+  }
+
+
+  trait Expression extends Element {
+    val typed:    Name
+    val isLValue: Boolean = false
+  }
+
+  case class Unary(operator: String,
+                   operand:  Expression,
+                   typed:    Name = Unknown) extends Expression
+
+  case class Binary(operator: String,
+                    left:     Expression,
+                    right:    Expression,
+                    typed:    Name  = Unknown) extends Expression
+
+  case class Literal(value: Int, typed: Name) extends Expression
+
+  case class New(typed: Name) extends Expression
+
+  case class Access(left:  Expression,
+                    right: VarOrCall) extends Expression {
+    override val isLValue: Boolean = right.isLValue
+    val typed = right.typed
+  }
+
+  case class VarOrCall(name:       Name,
+                       parameters: List[Expression] = Nil,
+                       typed:      Name = Unknown,
+          override val isLValue:   Boolean = false,
+                       static:     Boolean = false) extends Expression    
+  
+  trait Name extends Positional {
+    val relative: String
+    def label: String = ".error"
+    implicit def string2Absolute(s: String) = AbsoluteName(List(s))
+  }
+
+  case class RelativeName(relative: String) extends Name {
+    override def toString = relative
+  }
+
+  object Unknown extends RelativeName("<unknown>")
+
+
+  // -------------------------------------------------------------------------------------------------------------------
+  //  Structures for context analysis
+  // -------------------------------------------------------------------------------------------------------------------
+
+  object Root {
+    def / (n: String) = AbsoluteName(List(n))
+  }
+  
+  case class AbsoluteName(path:      List[String],
+                          displayAs: Option[String] = None) extends Name {
+
+    val relative = path.last
+
+    override def toString = displayAs match {
+      case None    => path.mkString(".")
+      case Some(s) => s
+    }
+
+    override def label = path.mkString("_")
+
+    override def equals(other: Any) = other match {
+      case r: AbsoluteName => path == r.path
+      case _ => false
+    }
+
+    def displayAs(s: String) = AbsoluteName(path, Some(s))
+
+    def / (other: String) = AbsoluteName(path :+ other)
+    def / (other: Name)   = AbsoluteName(path :+ other.relative)
+  }
+
+
+  case class Box(expr:  Expression,
+                 typed: Name) extends Expression {
+    override val isLValue = false
+  }
+
+  case class UnBox(expr:  Expression,
+                   typed: Name) extends Expression
+
+  case class DeRef(expr:  Expression,
+                   typed: Name) extends Expression
+
+  object Class {
+    val headerSize = 1
+
+    val intType = Class(AbsoluteName(List("<int>")) displayAs "Integer")
+    val boolType = Class(AbsoluteName(List("<bool>")) displayAs "Boolean")
+    val voidType = Class(AbsoluteName(List("<void>")) displayAs "Void")
+    val nullType = Class(AbsoluteName(List("<null>")) displayAs "Null")
+    val objectClass = Class(AbsoluteName(List("Object")))
+    val intClass = new Class(AbsoluteName(List("Integer")), Nil, Nil, Some(objectClass.name)) {
+      override val size = 1 + headerSize
+    }
+    val boolClass = new Class(new AbsoluteName(List("Boolean")), Nil, Nil, Some(objectClass.name)) {
+      override val size = 1 + headerSize
+    }
+    
+    val predefinedClasses = List(boolClass,intClass,objectClass)
+
+    val predefined = List(boolClass, intClass, objectClass, intType, boolType, voidType, nullType)
+
+    val box: Map[Class, Class] = Map(intType -> intClass,
+                                     boolType -> boolClass)
+
+    val unBox: Map[Class, Class] = Map(intClass -> intType,
+                                       boolClass -> boolType)
+  }
 }

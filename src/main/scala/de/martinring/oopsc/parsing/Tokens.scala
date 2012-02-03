@@ -1,9 +1,11 @@
 package de.martinring.oopsc.parsing
+import scala.util.parsing.input.Positional
 
 /*
  * Defines the tokens that are distinguished in the OOPS language.
  * @author Martin Ring
  */
+
 trait OOPSTokens extends scala.util.parsing.combinator.token.Tokens {
   /* Represents a keyword (Reserved word or delimiter) */
   case class Keyword(chars: String) extends Token  {
@@ -16,7 +18,7 @@ trait OOPSTokens extends scala.util.parsing.combinator.token.Tokens {
     override def toString = "NUMBER " + chars
   }
   /* Represents an identifier */
-  case class Identifier(chars: String) extends Token {
+  case class Identifier(chars: String) extends Token with Positional {
     override def toString = "IDENTIFIER " + chars
   }
 }

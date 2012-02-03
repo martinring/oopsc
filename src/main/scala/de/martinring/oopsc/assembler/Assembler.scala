@@ -1,8 +1,8 @@
 package de.martinring.oopsc
 
 object Assembler {
-  def label(s: String) = Instruction(s + ":")  
-  
+  def label(s: String) = Instruction(s + ":")
+
   trait Instr {
     var comment: String = ""
     def || (comment: String) = {
@@ -10,23 +10,23 @@ object Assembler {
       this
     }
   }
-      
-  case class Instruction(name: String, args: Any*) extends Instr {    
+
+  case class Instruction(name: String, args: Any*) extends Instr {
     override def toString = name + " " + args.mkString(", ") + comment
   }
-  
+
   case object No extends Instr {
     override def toString = comment
   }
-  
+
   case class Label(label: String) extends Instr {
     override def toString = label + ": " + comment
   }
-      
-  case class Instructions(title: String)(is: Instr*) extends Instr {    
-    override def toString = "; " + title + "\n" + is.mkString("\n") + "\n" + "; END " + title
-  }   
-  
+
+  case class Instructions(title: String)(val is: Instr*) extends Instr {
+    override def toString = "; " + title + "\n" + is.mkString("\n").indent(2) + "\n" + "; END " + title
+  }
+
   object O
 
   sealed abstract class R(x: Int) {
@@ -50,12 +50,12 @@ object Assembler {
     def === (o: O.type) = { ISZ(this) }
     def > (i: O.type) = { ISP(this) }
     def < (i: O.type) = { ISN(this) }
-    
+
     def unary_~ = Address(this)
 
     override def toString = "R" + x
   }
-  
+
   object R0 extends R(0)
   object R1 extends R(1)
   object R2 extends R(2)
@@ -64,10 +64,10 @@ object Assembler {
   object R5 extends R(5)
   object R6 extends R(6)
   object R7 extends R(7)
- 
-  case class Address(address: R) { 
-    def << (Ry: R) = Instruction("MMR", this, Ry)
-    override def toString = "(" + address + ")" 
+
+  case class Address(address: R) {
+    def << (Ry: R) = Instruction("MMR", this, Ry)    
+    override def toString = "(" + address + ")"
   }
 
   trait Condition

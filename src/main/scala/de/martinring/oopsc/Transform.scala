@@ -1,18 +1,25 @@
 package de.martinring.oopsc
 
-import scala.util.parsing.input.NoPosition
-import scala.util.parsing.input.Position
 import de.martinring.oopsc.ast._
-import javax.management.remote.rmi._RMIConnection_Stub
+import de.martinring.util._
+import de.martinring.util.Failable._
+
+/**
+ * Context carrying around information about declarations and the current position
+ * in the declaration tree.
+ */
+case class Context(path:         List[String] = Nil,
+                   declarations: Map[List[String], Declaration] = Map(),
+                   vmts:         Map[AbsoluteName, List[AbsoluteName]] = Map())
 
 /*
  * Transform monad combining a state monad carrying the declaration table and an error collection monad.
  * @author Martin Ring
  */
 trait Transform[A] {
-  import Transform._
-
-  def apply(context: Context = Context(Declarations(), "none")): Failable[(Context, A)]
+  import Transform._  
+  
+  def apply(context: Context = Context()): Failable[(Context, A),Message]
 
   def map[B](f: A => B): Transform[B] = transform(
     apply(_).map{ case (c,a) => (c,f(a)) })
@@ -20,7 +27,44 @@ trait Transform[A] {
   def flatMap[B](f: A => Transform[B]): Transform[B] = transform(
     apply(_).flatMap { case (c,a) => f(a)(c) })
 
-  def >>=[B](f: A => Transform[B]): Transform[B] = flatMap(f)    
+  /**
+   * Short operator for @see flatMap
+   */
+  def >>=[B](f: A => Transform[B]): Transform[B] = flatMap(f)
+
+  def >>[B](f: => Transform[B]): Transform[B] = flatMap(_ => f)
+
+  /**
+   * If errors were thrown, try an alternative transform.
+   * @param f the alternative to try
+   */
+  def or(f: Transform[A]): Transform[A] = transform(
+    c => apply(c) match {
+      case s: Success[A,Message] => s
+      case _ => f(c)
+    })
+
+  /**
+   * If errors were thrown ignore the result and give back a default value.
+   * This results in a guaranteed @see Success
+   * @param default the default value
+   */
+  def continueWith (default: A): Transform[A] = transform( c =>
+    apply(c) match {
+      case f: Failure[Message] => Errors((c, default), f.messages)
+      case x => x
+    }
+  )
+
+  /**
+   * If errors were thrown, ignore these and replace them with e
+   * @param e the message to be thrown
+   */
+  def ! (e: Message): Transform[A] = transform( apply(_) match {
+      case f: Failure[Message] => f.copy(messages = List(e))
+      case f: Errors[(Context,A),Message] => f.copy(messages = List(e))
+      case x => x
+    } )
 }
 
 /*
@@ -28,107 +72,133 @@ trait Transform[A] {
  */
 object Transform {
   /* build a transform monad */
-  def transform[A](f: Context => Failable[(Context, A)]) =
+  def transform[A](f: Context => Failable[(Context, A),Message]) =
     new Transform[A] { def apply(c: Context) = f(c) }
-    
-  def withDecls(f: Declarations => Failable[Declarations]) = transform[Unit](
-    c => f(c.declarations).map(x => (c.copy(declarations = x), ())))
 
-  /* returns the current type */
-  val currentType = transform[String]( c => Success((c,c.currentType)) )
-  
-  /* returns the current method */
-  val currentMethod = transform[String]( c => Success((c,c.currentMethod)) )
-  
-  /* adds @param size to the offset and returns the old value */
-  def incOffset(size: Int) = transform[Int]( c => Success( (c.copy(counter = c.counter + size),c.counter) ))
-                                      
-  /* returns a unique label */
-  val nextLabel = transform[String]( c => Success(
-      (c.copy(counter = c.counter + 1), c.currentType + "_" + c.currentMethod + "_" + c.counter)))
-  
-  /* enter a new or existing scope. resets the offset counter */
-  def enter(decl: Declaration, decls: List[Declaration] = Nil) = {
-    val base = transform(c => c.declarations.enter(decl.name).bind(decls).map(x => (c.copy(declarations = x, counter = 0), ())))
-    if (decl.isInstanceOf[Class]) 
-      base >>= (_ => transform[Unit](c => Success((c.copy(currentType = decl.name),()))))
-    else if (decl.isInstanceOf[Method])
-      base >>= (_ => transform[Unit](c => Success((c.copy(currentMethod = decl.name),()))))
-    else 
-      base
-  } 
-  
-  /* leave the current scope and return to parent */
-  val leave = transform[Unit](
-    c => c.declarations.leave.map(x => (c.copy(declarations = x, counter = 0), ())))
+  /* returns an resolved identifier pointing to the current type */
+  val currentClass = transform[AbsoluteName] { c =>
+      Success((c, c.path.prefixes.reverse.collectFirst {
+        case prefix if c.declarations.isDefinedAt(prefix) && c.declarations(prefix).isInstanceOf[Class] =>
+          new AbsoluteName(prefix)
+      }.getOrElse(new AbsoluteName(List("_init")))))
+    }
+
+  /* returns an resolved identifier pointing to the current method */
+  val currentMethod = transform[Option[AbsoluteName]] { c =>
+    Success((c, c.path.prefixes.reverse.collectFirst {
+      case prefix if c.declarations(prefix).isInstanceOf[Method] =>
+        Some(new AbsoluteName(prefix))
+    }.getOrElse(None)))
+  }
+
+  /* returns the current path */
+  val path =
+    transform( c => Success((c, c.path)) )
+
+  /* Enter a declaration */
+  def enter[A](name: String)(f: Transform[A]): Transform[A] = for {
+    p <- transform { c => Success((c.copy(path = c.path :+ name), c.path)) }
+    x <- f
+    _ <- transform { c => Success((c.copy(path=p), ())) }
+  } yield x
+
+  def enter[A](id: Name)(f: Transform[A]): Transform[A] = id match {
+    case r: AbsoluteName => for {
+      p <- transform { c => Success((c.copy(path=r.path), c.path)) }
+      x <- f
+      _ <- transform { c=> Success((c.copy(path=p), ())) }
+    } yield x
+    case _ => sys.error("unresolved identifier")
+  }   
 
   /* monadic wrapper for bind in @see Declarations */
-  def bind[S](decl: Declaration): Transform[Unit] =
-    bind(List(decl))
+  def bind(decl: Declaration): Transform[AbsoluteName] = transform { c =>
+    val p = c.path :+ decl.name.relative
+    c.declarations.get(p) match {
+      case None    => Success( (c.copy(declarations = c.declarations.updated(p,decl)), new AbsoluteName(p)) )
+      case Some(x: Declaration) => Failable.fail(Error(decl.pos,
+          if (Class.predefined.exists(_.name.relative == decl.name.relative)) decl.name + " is allready defined" 
+          else decl.name + " is allready defined at " + x.pos))
+    }
+  }
 
   /* monadic wrapper for bind in @see Declarations */
-  def bind(decls: List[Declaration]) = withDecls(
-    _.bind(decls))
+  def bind(decls: List[Declaration]): Transform[List[AbsoluteName]] =
+    sequence(decls map bind)
 
   /* monadic wrapper for rebind in @see Declarations */
-  def rebind[S](decl: Declaration): Transform[Unit] =
-    rebind(List(decl))
+  def update[T <: Declaration](decl: T): Transform[T] = transform { c =>
+    val p = decl.name match {
+      case r: AbsoluteName => r.path
+      case _ => sys.error("unresolved identifier " + decl.name)
+    }
+    Success( (c.copy(declarations = c.declarations.updated(p,decl)), decl) )
+  }
 
-  /* monadic wrapper for rebind in @see Declarations */  
-  def rebind(decls: List[Declaration]) = withDecls(
-    _.rebind(decls))
+  /* monadic wrapper for apply in @see Declarations */
+  def resolve(name: Name) = transform[AbsoluteName]{ c =>
+    c.path.prefixes.toList.reverse.collectFirst {
+      case prefix if {
+          c.declarations.isDefinedAt(prefix :+ name.relative) } =>
+        (c, new AbsoluteName(prefix :+ name.relative) at name) } orFail(Error(name.pos, name.relative + " is not in scope"))
+  }
 
-  /* monadic wrapper for apply in @see Declarations */  
-  def resolve[S](name: Name) = transform[Declaration](
-    c => c.declarations(name).map((c,_)))
-  
-  /* monadic wrapper for apply in @see Declarations. fails if result is not of type @see Class */  
-  def resolveClass(name: Name): Transform[Class] = for {
-    c <- resolve(name)
-    _ <- require(c.isInstanceOf[Class]) (Error(name.pos, name.name + " is not a class"))
-  } yield c match { case c: Class => c }    
+  def resolveClassName(name: Name) = for {
+    n <- resolve(name)
+    _ <- getType(n)
+  } yield n
 
-  /* monadic wrapper for apply in @see Declarations. fails if result is not of type @see Member */  
-  def resolveMember(typed: String, name: Name): Transform[Member] = for {
-    c <- resolveClass(typed)
-    val m = c.members.find(_.name == name.name)
-    _ <- require(m.isDefined)           (Error(name.pos, name.name + " is not a member of type " + typed))
-  } yield m.get  
-  
-  /* monadic wrapper for apply in @see Declarations. fails if result is not of type @see Variable */    
-  def resolveVariable(name: Name): Transform[Variable] = for {
-    v <- resolve(name)
-    _ <- require(v.isInstanceOf[Variable]) (Error(name.pos, name.name + " is not a variable"))
+  def get[S](name: Name) = transform[Declaration]{ c =>
+    name match {
+      case i: AbsoluteName => c.declarations.get(i.path) match {
+          case None => fail(Error(i.pos, "Not found: " + i.path.mkString(".")))
+          case Some(d) => Success((c, d))
+        }
+      case _ => sys.error("unresolved identifier " + name + " at " + name.pos)
+    }
+  }
+
+  /* monadic wrapper for apply in @see Declarations. fails if result is not of type @see Class */
+  def getType(name: Name): Transform[Class] = for {
+    c <- get(name)
+    _ <- require(c.isInstanceOf[Class]) (Error(name.pos, name.relative + " is not a class"))
+  } yield c match { case c: Class => c }
+
+  def getVMT(name: Name): Transform[List[AbsoluteName]] = transform{ c =>
+    Success((c,c.vmts.getOrElse(name.asInstanceOf[AbsoluteName], Nil))) }
+
+  def setVMT(name: Name)(vmt: List[AbsoluteName]): Transform[Unit] = transform{ c =>
+    Success((c.copy(vmts = c.vmts.updated(name.asInstanceOf[AbsoluteName], vmt)), ())) }
+
+  /* monadic wrapper for apply in @see Declarations. fails if result is not of type @see Method */
+  def getMethod(name: Name): Transform[Method] = for {
+    c <- get(name)
+    _ <- require(c.isInstanceOf[Method]) (Error(name.pos, name.relative + " is not a method"))
+  } yield c match { case c: Method => c }
+
+  /* monadic wrapper for apply in @see Declarations. fails if result is not of type @see Variable */
+  def getVariable(name: Name): Transform[Variable] = for {
+    v <- get(name)
+    _ <- require(v.isInstanceOf[Variable]) (Error(name.pos, name.relative + " is not a variable"))
   } yield v match { case v: Variable => v }
 
   /* fail if @param f is false with message @param msg */
-  def require(f: Boolean)(msg: Message) = transform(
-    c => if(f) Success((c,())) else Failure(List(msg)))  
-  
-  /* mzero */
-  def success[T](v: T) = transform(
-    c => Success((c,v)))
+  def require(f: Boolean)(msg: => Message) = transform(
+    c => if(f) Success((c,())) else Failure(List(msg)))
 
-  /* fail with @param msg */
-  def fail(msg: Message) = transform(
-    c => Failure(List(msg)))      
+  /* warn if @param f is false with message @param msg */
+  def throwIf(f: Boolean)(msg: => Message) = transform(
+    c => if(f) Errors((c,()),List(msg)) else Success((c,())))
 
-  /* 
-   * sequence monadic operations in a list.
-   */
-  def sequence[T](l: List[Transform[T]]): Transform[List[T]] =    
-    if (l.isEmpty) transform(c => Success((c,Nil))) 
+  /* sequence monadic operations in a list. */
+  def sequence[T](l: List[Transform[T]]): Transform[List[T]] =
+    if (l.isEmpty) transform(c => Success((c,Nil)))
     else l.tail.foldLeft { l.head map (List(_)) } {
       case (a, b) => for {
-        first  <- a
-        second <- b
-      } yield first ++ List(second)
+        first  <- a continueWith Nil
+        second <- b.map(List(_)) continueWith Nil
+      } yield first ++ second
     }
 
-  /* 
-   * merge monadic operations in a list. note that this means, the context is 
-   * lost. but can be run in parallel
-   */
-  def merge[T](l: List[Transform[T]]): Transform[List[T]] = transform[List[T]](
-    c => Failable.merge[T](l.map(_.apply(c).map(_._2))).map((c,_)))
+  def just[A](v: A) = transform(c => Success((c, v)))
 }

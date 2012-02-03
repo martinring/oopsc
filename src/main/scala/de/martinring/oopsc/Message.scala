@@ -1,6 +1,7 @@
 package de.martinring.oopsc
 
 import scala.util.parsing.input.Position
+import scala.util.parsing.input.Positional
 
 /*
  * Base type for Compiler Messages
@@ -15,8 +16,8 @@ abstract class Message(pos: Position, msg: String, prefix: String = "") {
 }
 
 /* Info message */
-case class Info(pos: Position, msg: String) extends Message(pos, msg, "Info")
+case class Info(pos: Position, msg: String) extends Message(pos, msg, "info")
 /* Warning */
-case class Warn(pos: Position, msg: String) extends Message(pos, msg, "Warning")
+case class Warn(pos: Position, msg: String) extends Message(pos, msg, "warn")
 /* Error Message */
-case class Error(pos: Position, msg: String) extends Message(pos, msg, "Error")
+case class Error(pos: Position, msg: String) extends Message(pos, msg, "error")

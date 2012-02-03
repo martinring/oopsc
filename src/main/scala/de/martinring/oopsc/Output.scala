@@ -36,7 +36,7 @@ object Output {
     println("------+------+-----------------------------------------------------------------")
     println(element(e))
     println
-  }  
+  }
 
   val lf = "\n"
 
@@ -54,39 +54,85 @@ object Output {
   private val noPos = "      |      | "
 
   private def element(el: Element): String = el match {
-    case Program(main) => noPos + "PROGRAM" + indent(main)
-      
+    case Program(classes) => noPos + "PROGRAM" + indent(classes :_*)
+
     case c: Class =>
-      pos(c) + "CLASS " + c.name + indent(noPos + "ATTRIBUTES" + indent(c.attributes :_*), 
+      pos(c) + "CLASS " + id(c.name) + " EXTENDS " + c.baseType.map(_.toString).getOrElse("*") + indent(
+                                          noPos + "ATTRIBUTES" + indent(c.attributes :_*),
                                           noPos + "METHODS" + indent (c.methods :_*))
-    case m@Method(name, vars, body) =>
-      pos(m) + "METHOD " + name + indent(noPos + "VARIABLES" + indent(vars :_*),
-                                         noPos + "BODY" + indent(body :_*))
-    case v@Variable(name, t, offset) => pos(v) + name + ": " + this.name(t)
-    case a@Attribute(name, t, offset) => pos(a) + name + ": " + this.name(t)
-      
-    case r@Read(operand) => pos(r) + "READ" + indent(operand)
-    case w@Write(operand) => pos(w) + "WRITE" + indent(operand)
-    case w@While(condition, body) => pos(w) + "WHILE" + indent(condition, noPos + "DO" + indent(body :_*))      
-    case i@If(condition, body) => pos(i) + "IF" + indent(condition, noPos + "DO" + indent(body :_*))
-    case c@Call(call) => pos(c) + "CALL" + indent(call)
-    case a@Assign(left, right) => pos(a) + "ASSIGN" + indent(left, right)
-      
-    case u@Unary(op, operand, t) => pos(u) + delimiters(op) + typed(t) + indent(operand)
-    case b@Binary(op, left, right, t) => pos(b) + delimiters(op) + typed(t) + indent(left, right)
-    case l@Literal(value, t) => pos(l) + value + typed(t)
-    case n@New(newType) => pos(n) + "NEW " + name(newType)
-    case a@Access(left, right, t, lv) => pos(a) + "ACCESS" + typed(t) + indent(left, right)
-    case n: Name => pos(n) + name(n) + typed(n.typed)
-    case b@Box(expr: Expression, t) => pos(b) + "BOX" + typed(t) + indent(expr)
-    case u@UnBox(expr: Expression, t) => pos(u) + "UNBOX" + typed(t) + indent(expr)
-    case d@DeRef(expr: Expression, t) => pos(d) + "DEREF" + typed(t) + indent(expr)
+
+    case m@Method(name, params, vars, body, typed, index) =>
+      pos(m) + "METHOD " + id(name) + ": " + id(typed) + (index.map(" ("+_+")").getOrElse("")) + indent(
+                                          noPos + "PARAMETERS" + indent(params :_*),
+                                          noPos + "VARIABLES" + indent(vars :_*),
+                                          noPos + "BODY" + indent(body :_*))
+
+    case v@Variable(name, t, offset, attr) =>
+      pos(v) + id(name) + ": " + id(t) + offset.map(" (" +_+ ")").getOrElse("")
+
+    case r@Read(operand) =>
+      pos(r) + "READ" + indent(operand)
+
+    case w@Write(operand) =>
+      pos(w) + "WRITE" + indent(operand)
+
+    case w@While(condition, body) =>
+      pos(w) + "WHILE" + indent(condition, noPos + "DO" + indent(body :_*))
+
+    case i@If(condition, body, Nil) =>
+      pos(i) + "IF" + indent(condition, noPos + "DO" + indent(body :_*))
+
+    case i@If(condition, body, elseBody) =>
+      pos(i) + "IF" + indent(condition, noPos + "DO" + indent(body :_*), noPos + "ELSE" + indent(elseBody : _*))
+
+    case c@Call(call) =>
+      pos(c) + "CALL" + indent(call)
+
+    case a@Assign(left, right) =>
+      pos(a) + "ASSIGN" + indent(left, right)
+
+    case r@Return(expr) =>
+      pos(r) + "RETURN" + (expr match {
+        case Some(e) => indent(e)
+        case _       => ""
+      })
+
+
+    case u@Unary(op, operand, t) =>
+      pos(u) + delimiters(op) + typed(t) + indent(operand)
+
+    case b@Binary(op, left, right, t) =>
+      pos(b) + delimiters(op) + typed(t) + indent(left, right)
+
+    case l@Literal(value, t) =>
+      pos(l) + value + typed(t)
+
+    case n@New(newType) =>
+      pos(n) + "NEW " + newType
+
+    case a@Access(left, right) =>
+      pos(a) + "ACCESS" + typed(a.typed, a.isLValue) + indent(left, right)
+
+    case n: VarOrCall =>
+      pos(n) + id(n.name) + typed(n.typed, n.isLValue) + (if (n.parameters.isEmpty) ""
+      else indent(noPos + "PARAMETERS" + indent(n.parameters :_*)))
+
+    case b@Box(expr: Expression, t) =>
+      pos(b) + "BOX" + typed(t, false) + indent(expr)
+
+    case u@UnBox(expr: Expression, t) =>
+      pos(u) + "UNBOX" + typed(t) + indent(expr)
+
+    case d@DeRef(expr: Expression, t) =>
+      pos(d) + "DEREF" + typed(t) + indent(expr)
   }
 
-  private def name(n: Name) = n.name
+  private def varorcall(n: VarOrCall) = id(n.name) + "PARAMS" + indent(n.parameters)
 
-  private def typed(t: Name) = t match {    
-    case Name("?",_,lv) => ""
-    case _ => ": " + (if (t.lvalue) "REF " + t.name else t.name)
+  private def id(identifier: ast.Name) = identifier.toString
+
+  private def typed(t: ast.Name, lv: Boolean = false) = t.relative match {
+    case "?"  => ""
+    case t => ": " + t + (if(lv)"*"else"")
   }
 }

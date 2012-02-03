@@ -12,7 +12,9 @@ object Lexical extends Scanners with OOPSTokens {
   /* set of reserved words which are parsed as keyword tokens */
   val reserved = Set(
     "CLASS", "IS", "END", "METHOD", "BEGIN", "READ", "NEW",
-    "WRITE", "IF", "THEN", "WHILE", "DO", "MOD", "SELF")
+    "WRITE", "IF", "THEN", "WHILE", "DO", "MOD", "SELF",
+    "TRUE", "FALSE", "ELSE", "ELSEIF", "AND", "OR", "NOT",
+    "RETURN", "NULL", "EXTENDS", "BASE")
 
   /* set of delimiter symbols which are parsed as keyword tokens */
   val delimiters = Map(
@@ -21,6 +23,7 @@ object Lexical extends Scanners with OOPSTokens {
       ")" -> "CLOSING PARENTHESES",
       "*" -> "TIMES",
       "+" -> "PLUS",
+      "," -> "COMMA",
       "-" -> "MINUS",
       "." -> "ACCESS",
       "/" -> "DIVIDE",
@@ -44,15 +47,15 @@ object Lexical extends Scanners with OOPSTokens {
   /* parses whitespace and comments and drops them */
   def whitespace: Parser[Any] =
     ( whitespaceChar
-    | '{' ~ allExcept(EofCh) ~ '}'
+    | '{' ~ rep(allExcept(EofCh, '}')) ~ '}'
     | '|' ~ rep(allExcept(EofCh, '\n'))
     | '{' ~ failure("unclosed comment") )*
 
   /* parses characters A-Z and a-z */
-  val letter = elem("letter", ch => 'A' <= ch && ch <= 'Z' || 'a' <= ch && ch <= 'z')
+  val letter = elem("letter", ch => ('a' to 'z' contains ch) || ('A' to 'Z' contains ch))
 
   /* parses characters 0-9 */
-  val digit = elem("digit", ch => '0' <= ch && ch <= '9')
+  val digit = elem("digit", '0' to '9' contains _)
 
   /* parses a sequence of characters until one of the specified occurs */
   def allExcept(cs: Char*) = elem("", ch => (cs forall (ch != _)))
