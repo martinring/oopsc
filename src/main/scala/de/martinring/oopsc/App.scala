@@ -1,11 +1,10 @@
 package de.martinring.oopsc
 
-import java.io.File
-import io.Source
-import ast._
+import de.martinring.oopsc.syntactic._
 import de.martinring.util._
 import de.martinring.util.console.ConsoleApp
 import java.io._
+import scala.io.Source
 
 object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
   // -------------------------------------------------------------------------------------------------------------------
@@ -18,7 +17,7 @@ object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
     val showSymbols = flag("l", "Show results of lexical analysis")
     val showSyntax = flag("s", "Show results of syntactical analysis")
     val showContext = flag("c", "Show results of context analysis")
-    val showVMTs = flag("v", "Show virtual method tables")
+    val showVMTs = flag("v", "Show virtual method tables")    
     val heapSize = namedArgument[Int]("hs", "Set heap size to %s (default is 100)") match {
       case Success(x,_)  => x
       case _ => 100
@@ -39,8 +38,8 @@ object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
       case Success(x, _) => Some(x)
       case x => None
     }
-    val target = targetFile.map(x => new PrintWriter(new File(x)))
-                           .getOrElse(new PrintWriter(new OutputStreamWriter(System.out, "UTF-8")))
+    val target = targetFile.map(x => () => new PrintWriter(new File(x)))
+                           .getOrElse(() => new PrintWriter(new OutputStreamWriter(System.out, "UTF-8")))
   }
   
   if (!arguments.unrecognized.isEmpty) {
@@ -53,7 +52,7 @@ object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
   //  Lexical analysis
   // -------------------------------------------------------------------------------------------------------------------
   
-  val tokens = new parsing.Lexical.Scanner(arguments.source)
+  val tokens = new lexical.Scanner.Scanner(arguments.source)
   if (arguments.showSymbols) {
     section("Results of the Lexical Analysis")
     Output(tokens)
@@ -63,8 +62,8 @@ object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
   //  Syntactical analysis
   // -------------------------------------------------------------------------------------------------------------------
 
-  val p: Program = parsing.program(tokens) match {
-    case s: parsing.Success[Program] => s.result
+  val p: Program = syntactic.Parser.program(tokens) match {
+    case s: syntactic.Parser.Success[Program] => s.result
     case f => println(f); sys.exit()
   }
   if (arguments.showSyntax) {
@@ -117,8 +116,9 @@ object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
     case f => f.messages.print; sys.exit
   }
       
-  code._2.toString().lines.foreach(arguments.target.println(_))       
-  arguments.target.flush()
+  val t = arguments.target()
+  code._2.toString().lines.foreach(t.println(_))       
+  t.flush()
   
   println("[success] total time: " + ((System.nanoTime - t0) / 1000000) + " ms")
 }

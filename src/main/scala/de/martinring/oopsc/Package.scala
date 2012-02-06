@@ -1,6 +1,6 @@
 package de.martinring
 
-import de.martinring.oopsc.ast.Declaration
+import de.martinring.oopsc.syntactic.Declaration
 import java.io.File
 import scala.util.parsing.input.Position
 import scala.util.parsing.input.Positional

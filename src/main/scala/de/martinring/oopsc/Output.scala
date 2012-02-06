@@ -1,8 +1,8 @@
 package de.martinring.oopsc
 
 import scala.io.Source
-import de.martinring.oopsc.ast._
-import de.martinring.oopsc.parsing.Lexical._
+import de.martinring.oopsc.syntactic._
+import de.martinring.oopsc.lexical.Scanner._
 import de.martinring.oopsc.assembler.Code
 import util.parsing.input.Positional
 import com.sun.org.apache.bcel.internal.classfile.LocalVariable
@@ -99,10 +99,10 @@ object Output {
 
 
     case u@Unary(op, operand, t) =>
-      pos(u) + delimiters(op) + typed(t) + indent(operand)
+      pos(u) + op + typed(t) + indent(operand)
 
     case b@Binary(op, left, right, t) =>
-      pos(b) + delimiters(op) + typed(t) + indent(left, right)
+      pos(b) + op + typed(t) + indent(left, right)
 
     case l@Literal(value, t) =>
       pos(l) + value + typed(t)
@@ -129,9 +129,9 @@ object Output {
 
   private def varorcall(n: VarOrCall) = id(n.name) + "PARAMS" + indent(n.parameters)
 
-  private def id(identifier: ast.Name) = identifier.toString
+  private def id(identifier: Name) = identifier.toString
 
-  private def typed(t: ast.Name, lv: Boolean = false) = t.relative match {
+  private def typed(t: Name, lv: Boolean = false) = t.relative match {
     case "?"  => ""
     case t => ": " + t + (if(lv)"*"else"")
   }

@@ -12,7 +12,10 @@ import scala.util.parsing.input.Positional
  *               (i.e. [Info])
  */
 abstract class Message(pos: Position, msg: String, prefix: String = "") {
-  override def toString = "[%s] %s: %s\n%s".format(prefix, pos, msg, pos.longString)
+  override def toString = (pos.line,pos.column) match {
+    case (0,0) => "[%s] %s".format(prefix,msg)
+    case (l,c) => "[%s] %d:%d: %s\n%s".format(prefix, l, c, msg, pos.longString)
+  }
 }
 
 /* Info message */

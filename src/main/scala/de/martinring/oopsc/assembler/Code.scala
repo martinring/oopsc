@@ -1,6 +1,6 @@
 package de.martinring.oopsc.assembler
 
-import de.martinring.oopsc.ast._
+import de.martinring.oopsc.syntactic._
 import de.martinring.oopsc.Assembler._
 import de.martinring.oopsc._
 import de.martinring.oopsc.Transform._

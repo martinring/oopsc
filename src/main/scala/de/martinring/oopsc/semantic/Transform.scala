@@ -1,6 +1,6 @@
 package de.martinring.oopsc
 
-import de.martinring.oopsc.ast._
+import de.martinring.oopsc.syntactic._
 import de.martinring.util._
 import de.martinring.util.Failable._
 
@@ -9,6 +9,7 @@ import de.martinring.util.Failable._
  * in the declaration tree.
  */
 case class Context(path:         List[String] = Nil,
+                   aliases:      Map[List[String], List[String]] = Map(),
                    declarations: Map[List[String], Declaration] = Map(),
                    vmts:         Map[AbsoluteName, List[AbsoluteName]] = Map())
 
@@ -109,9 +110,18 @@ object Transform {
       _ <- transform { c=> Success((c.copy(path=p), ())) }
     } yield x
     case _ => sys.error("unresolved identifier")
-  }   
+  }
 
-  /* monadic wrapper for bind in @see Declarations */
+  def createAlias(decl: Declaration): Transform[Unit] = transform { c =>
+    val p = c.path :+ decl.name.relative
+    decl.name match {
+      case AbsoluteName(path,_) => Success((c.copy(aliases = c.aliases.updated(p,path)),()))
+      case _ => sys.error("Should not happen")
+    }
+    
+  }
+    
+  /* monadic wrapper for bind in declarations */
   def bind(decl: Declaration): Transform[AbsoluteName] = transform { c =>
     val p = c.path :+ decl.name.relative
     c.declarations.get(p) match {
@@ -122,12 +132,12 @@ object Transform {
     }
   }
 
-  /* monadic wrapper for bind in @see Declarations */
+  /* monadic wrapper for bind in declarations */
   def bind(decls: List[Declaration]): Transform[List[AbsoluteName]] =
     sequence(decls map bind)
 
-  /* monadic wrapper for rebind in @see Declarations */
-  def update[T <: Declaration](decl: T): Transform[T] = transform { c =>
+  /* monadic wrapper for rebind in declarations */
+  def update[T <: Declaration](decl: T): Transform[T] = transform { c =>    
     val p = decl.name match {
       case r: AbsoluteName => r.path
       case _ => sys.error("unresolved identifier " + decl.name)
@@ -138,9 +148,11 @@ object Transform {
   /* monadic wrapper for apply in @see Declarations */
   def resolve(name: Name) = transform[AbsoluteName]{ c =>
     c.path.prefixes.toList.reverse.collectFirst {
-      case prefix if {
-          c.declarations.isDefinedAt(prefix :+ name.relative) } =>
-        (c, new AbsoluteName(prefix :+ name.relative) at name) } orFail(Error(name.pos, name.relative + " is not in scope"))
+      case prefix if c.declarations.isDefinedAt(prefix :+ name.relative) =>
+        (c, new AbsoluteName(prefix :+ name.relative) at name) 
+      case prefix if c.aliases.isDefinedAt(prefix :+ name.relative) =>
+        (c, new AbsoluteName(prefix :+ name.relative) at name) 
+    } orFail (Error(name.pos, name.relative + " is not in scope"))
   }
 
   def resolveClassName(name: Name) = for {
@@ -148,13 +160,18 @@ object Transform {
     _ <- getType(n)
   } yield n
 
-  def get[S](name: Name) = transform[Declaration]{ c =>
+  def get(name: Name) = transform[Declaration]{ c =>    
     name match {
       case i: AbsoluteName => c.declarations.get(i.path) match {
-          case None => fail(Error(i.pos, "Not found: " + i.path.mkString(".")))
+          case None => c.aliases.get(i.path) match {
+              case None => fail(Error(i.pos, "Not found: " + i.path.mkString(".")))
+              case Some(a) => Success((c,c.declarations(a)))
+          }
           case Some(d) => Success((c, d))
         }
-      case _ => sys.error("unresolved identifier " + name + " at " + name.pos)
+      case _ => Failure(List()) // this is a recursive error that does not need to
+                                // be reported again, so we supply an empty error
+                                // list.
     }
   }
 

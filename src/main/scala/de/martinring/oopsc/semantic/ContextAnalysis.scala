@@ -5,8 +5,8 @@
 
 package de.martinring.oopsc
 
-import de.martinring.oopsc.ast._
-import de.martinring.oopsc.ast.Class._
+import de.martinring.oopsc.syntactic._
+import de.martinring.oopsc.syntactic.Class._
 import de.martinring.oopsc.Transform._
 import de.martinring.util.Failable.pimpOption
 import de.martinring.util._
@@ -17,8 +17,8 @@ import de.martinring.util._
  */
 object ContextAnalysis {
   def analyse(p: Program): Transform[Program] = for {
-    _       <- bind(predefined) >> bind(p.classes)
-    classes <- sequence((p.classes ++ predefinedClasses) map (c => enter(c.name.relative)(signature(c))))
+    _       <- bind(predefined) >> bind(p.classes)    
+    classes <- sequence((p.classes ++ predefinedClasses) map (c => enter(c.name.relative)(signature(c))))    
     classes <- sequence(classes map (c => enter(c.name.relative)(analyse(c))))
     main    <- getType(Root / "Main") ! ("Missing main class" at p)
     entry   <- getMethod(Root / "Main" / "main") ! ("Missing main method" at main)
@@ -26,22 +26,30 @@ object ContextAnalysis {
                throwIf(entry.typed != voidType.name)("Main method must not return anything" at entry)
   } yield Program(classes) at p
 
-  def signature(c: Class, actual: Class = null): Transform[Class] = c.name match {
+  def signature(c: Class, actual: Class = null): Transform[Class] = c.name match {       
     case r: AbsoluteName => just(c)
     case i: RelativeName => for {
-      _        <- require(c != actual)("Cyclic inheritance" at actual)
-      baseName <- resolveClassName(c.baseType getOrElse sys.error(c.name + " has no base type"))
-      base     <- getType(baseName)
-      base     <- signature(base, if (actual == null) c else actual)
+      _        <- require(c != actual && (actual == null || c.baseType.map(_!=c.name).getOrElse(true)))(
+                          "Cyclic inheritance" at actual.baseType.get) >>
+                  require(c.baseType.map(_ != c.name).getOrElse(true))(
+                         (c.name + " extends itself") at c.baseType.get)                  
       name     <- resolveClassName(c.name)
-      _        <- bind(c.attributes) >> bind(c.methods) >>
-                  getVMT(baseName) >>= setVMT(name)
-      val size  = base.size + c.attributes.size
-      attrs    <- sequence(c.attributes.zip(base.size until size) map analyse)
+      _        <- bind(c.attributes) >> bind(c.methods)
+      base     <- c.baseType match {
+        case Some(n) => for {         
+          base <- resolve(n) >>= getType >>= (b => signature(b, if (actual == null) c else actual))            
+          _    <- getVMT(base.name) >>= setVMT(name)
+          _    <- sequence(base.methods map createAlias) >>
+                  sequence(base.attributes map createAlias)
+        } yield Some(base)
+        case None    => just(None) 
+      }                         
+      val baseSize = base.map(_.size).getOrElse(Class.headerSize)
+      val size     = baseSize + c.attributes.size
+      attrs    <- sequence(c.attributes.zip(baseSize until size) map analyse)
       methods  <- sequence(c.methods map (m => enter(m.name.relative)(signature(m))))
-      result   <- update(Class(name, attrs, methods, Some(base.name), size) at c)
-    } yield result
-  }
+      result   <- update(Class(name, attrs, methods, base.map(_.name), size) at c)
+    } yield result }
 
   def insert(c: List[Method], m: Method, index: Int = 0): (Int, List[Method]) = c match {
     case Nil  => (index, List(m))
@@ -55,7 +63,7 @@ object ContextAnalysis {
   def signature(m: Method): Transform[Method] = for {
     name   <- resolve(m.name)
     _      <- bind(m.parameters) >> bind(m.variables)
-    params <- sequence(m.parameters.zip(-1-m.parameters.size until -1) map analyse)
+    params <- sequence(m.parameters.zip(-1-m.parameters.size until -1) map analyse)    
     typed  <- resolveClassName(m.typed)
     self   <- currentClass
     vmt    <- currentClass >>= getVMT
@@ -66,15 +74,15 @@ object ContextAnalysis {
       case x  => for {
         o <- getMethod(vmt(x))
         _ <- require(o.typed == typed)("Method must have the same return type ("+o.typed+") as the overridden method" at m) >>
-             require(o.parameters.size == params.size)("Method must have the same number of parameters ("+o.parameters.size+") as the overridden method" at m) >>
+           require(o.parameters.size == params.size)("Method must have the same number of parameters ("+o.parameters.size+") as the overridden method" at m) >>
              sequence(o.parameters.zip(params) map { case (a,b) => require(a.typed == b.typed)("Overriding method has incompatible parameter type (required "+a.typed+")" at b) }) >>
              setVMT(self)(vmt.updated(x,name))
       } yield x
     }
-    result <- update(m.copy(name = name, parameters = params, typed = typed, index = Some(index)) at m)
+    result <- update(Method(name, params, m.variables, m.body, typed, Some(index)) at m)
   } yield result
 
-  def analyse(c: Class): Transform[Class] = for {
+  def analyse(c: Class): Transform[Class] = for {    
     methods <- sequence(c.methods map (m => enter(m.name.relative)(analyse(m))))
     result  <- update(c.copy(methods = methods) at c)
   } yield result
@@ -87,7 +95,7 @@ object ContextAnalysis {
 
   def analyse(m: Method): Transform[Method] = for {
     self       <- currentClass
-    base       <- getType(self) map (_.baseType getOrElse sys.error("no base"))
+    base       <- getType(self) map (_.baseType.get)
     path       <- path
     _          <- bind(Variable(m.name.asInstanceOf[AbsoluteName] / "SELF", self, Some(-2-m.parameters.size), false)) >>
                   bind(Variable(m.name.asInstanceOf[AbsoluteName] / "BASE", base, Some(-2-m.parameters.size), false))
@@ -126,9 +134,8 @@ object ContextAnalysis {
 
     case a: Assign => for {
       left  <- analyse(a.left)
-      _     <- throwIf(!left.isLValue || isBase(a.left) || isSelf(a.left)) ("l-value expected" at left)
-      t     <- getType(left.typed)
-      right <- analyse(a.right) >>= box >>= requireType(t)
+      _     <- throwIf(!left.isLValue || isBase(a.left) || isSelf(a.left)) ("l-value expected" at left)      
+      right <- analyse(a.right) >>= box >>= requireType(left.typed)
     } yield Assign(left, right) at a
 
     case r@Return(Some(expr)) => for {
