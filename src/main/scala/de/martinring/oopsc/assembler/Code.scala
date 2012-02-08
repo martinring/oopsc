@@ -10,10 +10,15 @@ import de.martinring.util.Success
  * Code generation
  */
 object  Code {
+  var labelCounter = 0
   val stack = "_stack"
   val heap = "_heap"
   val end = "_end"
-
+  val error = "_error"
+  val divisionByZero = "_divisionByZero"
+  val nullPointer = "_nullPointer"
+  val outOfMemory = "_outOfMemory"    
+  
   def generate(element: Element): Transform[Instr] = element match {
     case Program(classes) => for {
       classes   <- sequence(classes map (x => enter(x.name)(generate(x))))
@@ -24,12 +29,25 @@ object  Code {
       R4 << heap    || "R4 points to next free position on Heap",
       main,
       R0 << end     || "exit program",
-      Instructions("CLASSES")(classes :_*),
+      Label(error),
+      R5 << ~R7,
+      R6 << (R5 === O),
+      Instruction("JPC", R6, end),
+      Instruction("SYS", 1, 5),
+      R7 <<+ R1,      
+      R0 << error,
+      Label(divisionByZero),
+      string("Runtime error: Division by 0"),
+      Label(nullPointer),
+      string("Runtime error: Null pointer"),
+      Label(outOfMemory),
+      string("Runtime error: Out of memory"),
+      Instructions("CLASSES")(classes :_*),            
       Label(stack)  || "Start of stack",
       Instruction("DAT", App.arguments.stackSize, 0),
       Label(heap)   || "Start of heap",
-      Instruction("DAT", App.arguments.heapSize, 0),
-      Label(end)    || "End of program")
+      Instruction("DAT", App.arguments.heapSize, 0),      
+      Label(end)    || "End of program")    
 
     case c: Class => for {
       methods <- sequence(c.methods map (x => enter(x.name)(generate(x))))
@@ -98,6 +116,14 @@ object  Code {
       R0 << whileLabel,
       Label(endLabel))
 
+    case f@Forever(body) => for {      
+      body <- sequence(body map generate)
+      forever <- label(f)      
+    } yield Instructions("FOREVER")(
+      Label(forever),
+      Instructions("BODY")(body :_*),
+      R0 << forever)
+      
     case i@If(condition, body, elseBody) => for {
       condition <- generate(condition)
       body <- sequence(body map generate)
@@ -177,54 +203,84 @@ object  Code {
         )
         case "NOT" => Instructions("NOT")(
           R5 << (R5 === O),
-          ~R2 << R5 )})
-
-    case Binary(operator, left, right, typed) => for {
-      left <- generate(left)
+          ~R2 << R5 )})           
+      
+    /** shortcut operators */
+    case b@Binary(operator @ ("THEN" | "ELSE"), left, right, typed) => for {
+      left  <- generate(left)
       right <- generate(right)
+      skip  <- label(b)
+    } yield Instructions("BINARY " + operator)(
+      left,
+      R5 << ~R2,
+      operator match {
+        case "THEN" => Instructions("SHORTCUT AND")(
+          R5 << (R5 === O),
+          Instruction("JPC",R5,skip),
+          R2 <<- R1
+        )          
+        case "ELSE" => Instructions("SHORTCUT THEN")(          
+          Instruction("JPC",R5,skip),
+          R2 <<- R1
+        )
+      },
+      right,
+      Label(skip)
+    )
+    
+    case b@Binary(operator, left, right, typed) => for {
+      left <- generate(left)
+      right <- generate(right)      
+      skip <- label(b)
     } yield Instructions("BINARY " + operator)(
       left,
       right,
-      R5 << ~R2,
-      R2 <<- R1,
       R6 << ~R2,
+      R2 <<- R1,
+      R5 << ~R2,
       operator match {
-        case "+"   => R6 <<+ R5
-        case "-"   => R6 <<- R5
-        case "*"   => R6 <<* R5
-        case "/"   => R6 <</ R5
-        case "MOD" => R6 <<% R5
-        case "AND" => R6 <<& R5
-        case "OR"  => R6 <<| R5
+        case "+"   => R5 <<+ R6
+        case "-"   => R5 <<- R6
+        case "*"   => R5 <<* R6
+        case "/"   => Instructions("")(                        
+            Instruction("JPC", R6, skip),            
+            R7 << divisionByZero,
+            R0 << error,
+            Label(skip),
+            R5 <</ R6
+          ) 
+        case "MOD" => R5 <<% R6
+        case "AND" => R5 <<& R6
+        case "OR"  => R5 <<| R6
         case ">"   => Instructions("")(
-          R6 <<- R5,
-          R6 << (R6 > O)
+          R5 <<- R6,
+          R5 << (R5 > O)
         )
         case ">="  => Instructions("")(
-          R6 <<- R5,
-          R6 << (R6 < O),
-          R6 <<^ R1
+          R5 <<- R6,
+          R5 << (R5 < O),
+          R5 <<^ R1
         )
         case "<"   => Instructions("")(
-          R6 <<- R5,
-          R6 << (R6 < O)
+          R5 <<- R6,
+          R5 << (R5 < O)
         )
         case "<="  => Instructions("")(
-          R6 <<- R5,
-          R6 << (R6 > O),
-          R6 <<^ R1
+          R5 <<- R6,
+          R5 << (R5 > O),
+          R5 <<^ R1
         )
         case "="   => Instructions("")(
-          R6 <<- R5,
-          R6 << (R6 === O)
+          R5 <<- R6,
+          R5 << (R5 === O)
         )
         case "#"   => Instructions("")(
-          R6 <<- R5,
-          R6 << (R6 === O),
-          R6 <<^ R1
+          R5 <<- R6,
+          R5 << (R5 === O),
+          R5 <<^ R1
         )
       },
-      ~R2 << R6
+      ~R2 << R5
     )
 
     case Literal(value, typed) => transform( c => Success{
@@ -236,7 +292,14 @@ object  Code {
 
     case n@New(typed) => for {
       clazz <- getType(typed)
-    } yield Instructions("NEW " + typed)(
+    } yield Instructions("NEW " + typed)(        
+        R5 << end,
+        R6 << clazz.size,
+        R6 <<+ R4,
+        R5 <<- R6,
+        R5 << (R5 < O),
+        R7 << outOfMemory,
+        Instruction("JPC",R5,error),
         R2 <<+ R1,
         R5 << clazz.name.label || "Get reference to VMT",        
         ~R4 << R5     || "Put VMT Address on Heap",
@@ -256,13 +319,13 @@ object  Code {
       t           <- currentClass
       decl        <- get(name)     
     } yield decl match {
-        case a@Variable(name, typed, offset, true) =>
+        case a@Variable(name, typed, offset, true, _) =>
           Instructions("REF TO ATTRIBUTE " + name)(
             R5 << ~R2,
             R6 << offset.get,
             R5 <<+ R6,
             ~R2 << R5)
-        case Method(name, params, variables, body, typed, index) => if (static) {
+        case Method(name, params, variables, body, typed, index, _) => if (static) {
           Instructions("STATIC CALL OF METHOD " + name)(
             R5 << returnLabel,
             R2 <<+ R1,
@@ -285,7 +348,7 @@ object  Code {
             R0 << R5,
             Label(returnLabel) )
         }
-        case v@Variable(name, typed, offset, false) =>
+        case v@Variable(name, typed, offset, false, _) =>
           Instructions("REF TO VARIABLE " + name)(
             R5 << offset.get,
             R5 <<+ R3,
@@ -316,16 +379,30 @@ object  Code {
       R5 << ~R5      || "Read value",
       ~R2 << R5      || "Write to stack")
 
-    case DeRef(expr, typed) => for {
+    case d@DeRef(expr, typed) => for {
       expr <- generate(expr)
+      skip <- label(d).map(_ + "_skipNP")
     } yield Instructions("DEREF")(
       expr,
       R5 << ~R2,
       R5 << ~R5,
+      Instruction("JPC",R5,skip),
+      R7 << nullPointer,
+      R0 << error,
+      Label(skip),
       ~R2 << R5)
   }
 
-  def label(element: Element): Transform[String] = for {
-    p <- path
-  } yield p.mkString("_") + "_" + element.pos.line + "_" + element.pos.column
+  def label(element: Element): Transform[String] = {
+    labelCounter += 1
+    for {
+      p <- path    
+    } yield p.mkString("_") + "_" + element.pos.line + "_" + element.pos.column + "_" + labelCounter
+  }
+  
+  def string(s: String): Instructions = {
+    val is = ("\n"+s+"\n").toList.map { case x: Char => Instruction("DAT",1,x.toInt) } ++
+             List(Instruction("DAT",1,0))
+    Instructions(s)(is :_* )
+  }
 }

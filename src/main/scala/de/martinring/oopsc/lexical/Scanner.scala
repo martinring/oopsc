@@ -45,7 +45,9 @@ object Scanner extends Scanners with Tokens {
     letter ~ (letter|digit*) ^^ { case c~cs => c::cs mkString }
     
   /** parses an integer */
-  def integer = (digit+) ^^ (_.mkString.toInt)
+  def integer = 
+    ( (digit+) ^^ (_.mkString.toInt)
+     | '\'' ~> (allExcept(EofCh,'\'') <~ '\'') ^^ (_.toInt) )
     
   /** parses characters A-Z and a-z */
   def letter = elem("letter", ch => ('a' to 'z' contains ch) || ('A' to 'Z' contains ch))

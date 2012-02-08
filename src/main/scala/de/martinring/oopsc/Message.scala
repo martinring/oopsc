@@ -8,13 +8,13 @@ import scala.util.parsing.input.Positional
  * @author Martin Ring
  * @param pos the position in the source that this message referrs to
  * @param msg the message itself
- * @param prefix the prefix that will be displayed in brackets before the message
- *               (i.e. [Info])
+ * @param prefix the prefix that will be displayed before the message
+ *               (i.e. "Info")
  */
 abstract class Message(pos: Position, msg: String, prefix: String = "") {
   override def toString = (pos.line,pos.column) match {
-    case (0,0) => "[%s] %s".format(prefix,msg)
-    case (l,c) => "[%s] %d:%d: %s\n%s".format(prefix, l, c, msg, pos.longString)
+    case (0,0) => "%s: %s".format(prefix,msg)
+    case (l,c) => "[%d.%d] %s: %s\n%s".format(l, c, prefix, msg, pos.longString)
   }
 }
 

@@ -18,7 +18,7 @@ import de.martinring.util._
 object ContextAnalysis {
   def analyse(p: Program): Transform[Program] = for {
     _       <- bind(predefined) >> bind(p.classes)    
-    classes <- sequence((p.classes ++ predefinedClasses) map (c => enter(c.name.relative)(signature(c))))    
+    classes <- sequence((p.classes ++ predefinedClasses) map (c => (signature(c.name))))    
     classes <- sequence(classes map (c => enter(c.name.relative)(analyse(c))))
     main    <- getType(Root / "Main") ! ("Missing main class" at p)
     entry   <- getMethod(Root / "Main" / "main") ! ("Missing main method" at main)
@@ -26,31 +26,38 @@ object ContextAnalysis {
                throwIf(entry.typed != voidType.name)("Main method must not return anything" at entry)
   } yield Program(classes) at p
 
-  def signature(c: Class, actual: Class = null): Transform[Class] = c.name match {       
-    case r: AbsoluteName => just(c)
-    case i: RelativeName => for {
-      _        <- require(c != actual && (actual == null || c.baseType.map(_!=c.name).getOrElse(true)))(
-                          "Cyclic inheritance" at actual.baseType.get) >>
-                  require(c.baseType.map(_ != c.name).getOrElse(true))(
-                         (c.name + " extends itself") at c.baseType.get)                  
-      name     <- resolveClassName(c.name)
-      _        <- bind(c.attributes) >> bind(c.methods)
-      base     <- c.baseType match {
-        case Some(n) => for {         
-          base <- resolve(n) >>= getType >>= (b => signature(b, if (actual == null) c else actual))            
-          _    <- getVMT(base.name) >>= setVMT(name)
-          _    <- sequence(base.methods map createAlias) >>
-                  sequence(base.attributes map createAlias)
-        } yield Some(base)
-        case None    => just(None) 
-      }                         
-      val baseSize = base.map(_.size).getOrElse(Class.headerSize)
-      val size     = baseSize + c.attributes.size
-      attrs    <- sequence(c.attributes.zip(baseSize until size) map analyse)
-      methods  <- sequence(c.methods map (m => enter(m.name.relative)(signature(m))))
-      result   <- update(Class(name, attrs, methods, base.map(_.name), size) at c)
-    } yield result }
-
+  def signature(c: Name, actual: Class = null): Transform[Class] = for {
+    n <- resolve(c) 
+    c <- getType(n)
+    r <- c.name match {
+      case r: AbsoluteName => just(c)
+      case i: RelativeName => enter(n)( for {
+        _        <- require(c != actual && (actual == null || c.baseType.map(_!=c.name).getOrElse(true)))(
+                            "Cyclic inheritance" at actual.baseType.get) >>
+                    require(c.baseType.map(_ != c.name).getOrElse(true))(
+                          (c.name + " extends itself") at c.baseType.get)          
+        name     <- resolveClassName(c.name)
+        base     <- c.baseType match {
+          case Some(n) => for {
+            baseName <- resolve(n) 
+            base     <- getType(baseName)
+            base     <- signature(baseName, if (actual == null) c else actual)
+            _        <- getVMT(base.name) >>= setVMT(name)
+            _        <- sequence(base.methods map createAlias) >>
+                        sequence(base.attributes map createAlias)
+          } yield Some(base)
+          case None    => just(None) 
+        }                               
+        _        <- bind(c.attributes) >> bind(c.methods)
+        val baseSize = base.map(_.size).getOrElse(Class.headerSize)
+        val size     = baseSize + c.attributes.size
+        attrs    <- sequence(c.attributes.zip(baseSize until size) map analyse)
+        methods  <- sequence(c.methods map (m => enter(m.name.relative)(signature(m))))
+        result   <- update(Class(name, attrs, methods, base.map(_.name), size) at c)
+      } yield result)
+    }
+  } yield r
+  
   def insert(c: List[Method], m: Method, index: Int = 0): (Int, List[Method]) = c match {
     case Nil  => (index, List(m))
     case h::t => if (h.name.relative == m.name.relative) (index, m::t)
@@ -73,13 +80,14 @@ object ContextAnalysis {
       } yield vmt.size
       case x  => for {
         o <- getMethod(vmt(x))
-        _ <- require(o.typed == typed)("Method must have the same return type ("+o.typed+") as the overridden method" at m) >>
-           require(o.parameters.size == params.size)("Method must have the same number of parameters ("+o.parameters.size+") as the overridden method" at m) >>
+        _ <- require(o.visibility <= m.visibility)("Overriding method may not narrow visibility" at m) >>
+             require(o.typed == typed)("Method must have the same return type ("+o.typed+") as the overridden method" at m) >>
+             require(o.parameters.size == params.size)("Method must have the same number of parameters ("+o.parameters.size+") as the overridden method" at m) >>
              sequence(o.parameters.zip(params) map { case (a,b) => require(a.typed == b.typed)("Overriding method has incompatible parameter type (required "+a.typed+")" at b) }) >>
              setVMT(self)(vmt.updated(x,name))
       } yield x
     }
-    result <- update(Method(name, params, m.variables, m.body, typed, Some(index)) at m)
+    result <- update(Method(name, params, m.variables, m.body, typed, Some(index), m.visibility) at m)
   } yield result
 
   def analyse(c: Class): Transform[Class] = for {    
@@ -172,7 +180,7 @@ object ContextAnalysis {
         right <- analyse(b.right) >>= unBox >>= requireType(intType)
       } yield new Binary(b.operator, left, right, boolType.name) at b
 
-      case "AND" | "OR" => for {
+      case "AND" | "OR" | "THEN" | "ELSE" => for {
         left  <- analyse(b.left) >>= unBox >>= requireType(boolType)
         right <- analyse(b.right) >>= unBox >>= requireType(boolType)
       } yield new Binary(b.operator, left, right, boolType.name) at b
@@ -192,12 +200,14 @@ object ContextAnalysis {
     case a: Access => for {      
       left  <- analyse(a.left) >>= box      
       ps    <- sequence(a.right.parameters map (analyse(_) >>= box))
-      right <- enter(left.typed)(analyseMember(a.right.copy(parameters = ps) at a.right, isBase(a.left)))
+      c     <- currentClass
+      right <- enter(left.typed)(analyseMember(c, a.right.copy(parameters = ps) at a.right, isBase(a.left)))
     } yield Access(left, right) at a
 
     case voc: VarOrCall => for {
       ps   <- sequence(voc.parameters map (analyse(_) >>= box))
-      voc  <- analyseMember(voc.copy(parameters = ps) at voc)
+      c    <- currentClass
+      voc  <- analyseMember(c, voc.copy(parameters = ps) at voc)
       d    <- resolve(voc.name) >>= get
       c    <- currentClass
       r    <- d match {
@@ -212,22 +222,30 @@ object ContextAnalysis {
     } yield r
   }
 
-  def analyseMember(voc: VarOrCall, ofBase: Boolean = false): Transform[VarOrCall] = for {
+  def analyseMember(caller: AbsoluteName, voc: VarOrCall, ofBase: Boolean = false): Transform[VarOrCall] = for {
+    call  <- getType(caller)
+    mem   <- currentClass >>= getType 
+    isam  <- call isA mem
     name  <- resolve(voc.name)
-    r     <- get(name) >>= ( _ match {
+    r     <- get(name)
+    _     <- require(r.visibility != Visibility.Private   || call == mem)(
+                (name + " is only accessible from within " + mem.name) at name) >>
+             require(r.visibility != Visibility.Protected || isam)(
+                (name + " is only accessible from within " + mem.name + " or deriving classes") at name)    
+    r     <- r match {
       case a: Variable if a.isAttribute => for {
-           _ <- throwIf(voc.parameters.size != 0)("attributes can't take arguments" at voc)
+            _ <- throwIf(voc.parameters.size != 0)("attributes can't take arguments" at voc)
         } yield voc.copy(name = name, typed = a.typed, isLValue = true) at voc
       case m: Method    => for {
-           _ <- throwIf(voc.parameters.size != m.parameters.size)(
+            _ <- throwIf(voc.parameters.size != m.parameters.size)(
                 Error(voc.pos,"wrong number of arguments for method " + voc.name +
                               " (should be " + m.parameters.size + ")"))
-           _ <- sequence(voc.parameters.zip(m.parameters).map { case (x,y) => requireType(y.typed)(x) })
+            _ <- sequence(voc.parameters.zip(m.parameters).map { case (x,y) => requireType(y.typed)(x) })
         } yield voc.copy(name = name, typed = m.typed, static = ofBase) at voc
       case v: Variable  => for {
-           _ <- throwIf(voc.parameters.size != 0)("variables can't take arguments" at voc)
-        } yield voc.copy(name = name, typed = v.typed, isLValue = true) at voc } )
-  } yield r
+            _ <- throwIf(voc.parameters.size != 0)("variables can't take arguments" at voc)
+        } yield voc.copy(name = name, typed = v.typed, isLValue = true) at voc 
+    } } yield r    
 
   def box(expr: Expression): Transform[Expression] = for {
     t2   <- getType(expr.typed)

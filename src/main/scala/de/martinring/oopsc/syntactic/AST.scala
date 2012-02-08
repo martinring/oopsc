@@ -12,25 +12,40 @@ trait Element extends Positional
 
 case class Program(classes: List[Class]) extends Element
 
-trait Declaration extends Element { val name: Name }
+object Visibility extends Enumeration {
+  type Visibility = Value
+  val Private, Protected, Public = Value
+}
+
+import Visibility._
+
+trait Declaration extends Element { 
+  val name: Name 
+  val visibility: Visibility 
+}
 
 case class Class(name:       Name,
-                  attributes: List[Variable] = Nil,
-                  methods:    List[Method]   = Nil,
-                  baseType:   Option[Name]   = None,
-                  size: Int = Class.headerSize) extends Declaration
+                 attributes: List[Variable] = Nil,
+                 methods:    List[Method]   = Nil,
+                 baseType:   Option[Name]   = None,
+                 size: Int = Class.headerSize,
+                 visited: Boolean = false) extends Declaration {
+  val visibility = Public
+}
 
 case class Method(name:       Name,
                   parameters: List[Variable],
                   variables:  List[Variable],
                   body:       List[Statement],
                   typed:      Name = Unknown,
-                  index:      Option[Int]) extends Declaration
+                  index:      Option[Int] = None,
+                  visibility: Visibility = Public) extends Declaration
 
 case class Variable(name:  Name,
                     typed: Name,
                     offset: Option[Int],
-                    isAttribute: Boolean) extends Declaration
+                    isAttribute: Boolean,
+                    visibility: Visibility = Public) extends Declaration
 
 trait Statement extends Element {
   def returns = false
@@ -42,6 +57,8 @@ case class Write(operand: Expression) extends Statement
 
 case class While(condition: Expression,
                   body:      List[Statement]) extends Statement
+ 
+case class Forever(body: List[Statement]) extends Statement
 
 case class If(condition: Expression,
               body:      List[Statement],
@@ -57,15 +74,20 @@ case class Return(value: Option[Expression] = None) extends Statement {
   override def returns = true
 }
 
-
 trait Expression extends Element {
   val typed:    Name
   val isLValue: Boolean = false
+  def + (that: Expression) = Binary("+", this, that, typed)
+  def - (that: Expression) = Binary("-", this, that, typed)
+  def * (that: Expression) = Binary("*", this, that, typed)
+  def / (that: Expression) = Binary("/", this, that, typed)
+  def unary_- = Unary("-", this, typed)
+  def unary_! = Unary("NOT", this, typed)
 }
 
 case class Unary(operator: String,
-                  operand:  Expression,
-                  typed:    Name = Unknown) extends Expression
+                 operand:  Expression,
+                 typed:    Name = Unknown) extends Expression
 
 case class Binary(operator: String,
                   left:     Expression,
@@ -143,6 +165,19 @@ case class UnBox(expr:  Expression,
 
 case class DeRef(expr:  Expression,
                   typed: Name) extends Expression
+
+object Literal {
+  val True  = Literal(1, Class.boolType.name)
+  val False = Literal(0, Class.boolType.name)
+  val Null  = Literal(0, Class.nullType.name)
+  object Int {
+    def apply(int: Int): Literal = Literal(int, Class.intType.name)
+    def unapply(expr: Expression): Option[Int] = expr match {
+      case Literal(x, Class.intType.name) => Some(x)
+      case _ => None
+    }
+  }
+}
 
 object Class {
   val headerSize = 1

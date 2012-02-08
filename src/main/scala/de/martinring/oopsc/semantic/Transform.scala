@@ -122,13 +122,13 @@ object Transform {
   }
     
   /* monadic wrapper for bind in declarations */
-  def bind(decl: Declaration): Transform[AbsoluteName] = transform { c =>
+  def bind(decl: Declaration): Transform[AbsoluteName] = transform { c =>    
     val p = c.path :+ decl.name.relative
     c.declarations.get(p) match {
       case None    => Success( (c.copy(declarations = c.declarations.updated(p,decl)), new AbsoluteName(p)) )
       case Some(x: Declaration) => Failable.fail(Error(decl.pos,
-          if (Class.predefined.exists(_.name.relative == decl.name.relative)) decl.name + " is allready defined" 
-          else decl.name + " is allready defined at " + x.pos))
+          if (Class.predefined.exists(_.name.relative == decl.name.relative)) decl.name + " is already defined" 
+          else decl.name + " is already defined at " + x.pos))
     }
   }
 

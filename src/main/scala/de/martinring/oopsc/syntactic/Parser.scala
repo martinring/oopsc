@@ -30,24 +30,30 @@ object Parser extends TokenParsers {
     ( attribute <~ ";"
     | method                                              ^^ { List(_) } )
 
+  def visibility: Parser[Visibility.Value] = opt (
+      PRIVATE   ^^^ Visibility.Private
+    | PROTECTED ^^^ Visibility.Protected
+    | PUBLIC    ^^^ Visibility.Public ) ^^ (_ getOrElse Visibility.Public)
+    
   def method: Parser[Method] =
-    ( METHOD ~> name ~
+    ( visibility ~ (METHOD ~> name) ~
       opt( "(" ~> rep1sep(variable, ";") <~ ")" ) ~
       opt( ":" ~> name ) <~ IS ) ~
     ( variable <~ ";" *) ~
     ( BEGIN ~> (statement*)) <~
       END <~ METHOD                                   ^^
-    { case id~params~typed~vars~body =>
+    { case vis~id~params~typed~vars~body =>
         Method(
           id,
           params.map(_.flatten) getOrElse Nil,
           vars.flatten,
           body,
           typed getOrElse Class.voidType.name,
-          None) at id }
+          None,
+          vis) at id }
 
   def attribute: Parser[List[Variable]] =
-      rep1sep(name, "," ) ~ (":" ~> name)                 ^^ { case ids~t => ids map (id => Variable(id, t, None, true) at id) }
+      visibility ~ rep1sep(name, "," ) ~ (":" ~> name)    ^^ { case v~ids~t => ids map (id => Variable(id, t, None, true, v) at id) }
 
   def variable: Parser[List[Variable]] =
       rep1sep(name, "," ) ~ (":" ~> name)                 ^^ { case ids~t => ids map (id => Variable(id, t, None, false) at id) }
@@ -75,11 +81,16 @@ object Parser extends TokenParsers {
 
   /** combinator for left associative binary operators */
   def binopl(expr: Parser[Expression], ops: Parser[Keyword with Positional]): Parser[Expression] = 
-      expr ~ ( ops ~! expr * ) ^^
-    { case l ~ rs => rs.foldLeft(l){ case (l,op~r) => Binary(op.chars,l,r) at op } }
+      expr ~ ( ops ~ expr * ) ^^
+    { case l ~ rs => rs.foldLeft(l) { case (l,op~r) => Binary(op.chars,l,r) at op } }
   
-  def disjunction: Parser[Expression] = binopl(conjunction,OR)
-  def conjunction: Parser[Expression] = binopl(relation,AND)
+  /** combinator for right associative binary operators */
+  def binopr(expr: Parser[Expression], ops: Parser[Keyword with Positional]): Parser[Expression] =  
+   ( expr ~ ops ~ binopr(expr,ops) ^^ { case l ~ op ~ r => Binary(op.chars,l,r) at op }
+   | expr )
+  
+  def disjunction: Parser[Expression] = binopr(conjunction, OR ~> ELSE | OR)
+  def conjunction: Parser[Expression] = binopr(relation, AND ~> THEN | AND)
   def relation:    Parser[Expression] = binopl(expr,"="|"#"|"<"|">"|"<="|">=")  
   def expr:        Parser[Expression] = binopl(term,"+"|"-")
   def term:        Parser[Expression] = binopl(factor,"*"|"/"| MOD)
@@ -93,15 +104,16 @@ object Parser extends TokenParsers {
     { case lit~vs => vs.foldLeft(lit){ case (l,(o~r)) => Access(l, r) at o }}
 
   def literal: Parser[Expression] = positioned (
-      number                                              ^^ { x => Literal(x, Class.intType.name) }
-    | FALSE                                               ^^^{ Literal(0, Class.boolType.name) }
-    | TRUE                                                ^^^{ Literal(1, Class.boolType.name) }
-    | NULL                                                ^^^{ Literal(0, Class.nullType.name) }
+      number                                              ^^ { Literal.Int(_) }
+    | FALSE                                               ^^^{ Literal.False }
+    | TRUE                                                ^^^{ Literal.True }
+    | NULL                                                ^^^{ Literal.Null }
     | SELF                                                ^^^{ VarOrCall(new RelativeName("SELF")) }
     | BASE                                                ^^^{ VarOrCall(new RelativeName("BASE")) }
     | NEW ~> name                                         ^^ { x => New(x) at x }
     | "(" ~> disjunction <~ ")"
-    | varorcall )
+    | varorcall 
+    | failure("expression expected"))
 
   def varorcall: Parser[VarOrCall] = positioned (
     name ~ opt( "(" ~> rep1sep(disjunction, ",") <~")" )  ^^ { case name~params => VarOrCall(name, params getOrElse Nil) } )

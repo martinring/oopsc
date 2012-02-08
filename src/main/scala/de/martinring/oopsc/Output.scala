@@ -61,14 +61,14 @@ object Output {
                                           noPos + "ATTRIBUTES" + indent(c.attributes :_*),
                                           noPos + "METHODS" + indent (c.methods :_*))
 
-    case m@Method(name, params, vars, body, typed, index) =>
-      pos(m) + "METHOD " + id(name) + ": " + id(typed) + (index.map(" ("+_+")").getOrElse("")) + indent(
+    case m@Method(name, params, vars, body, typed, index, vis) =>
+      pos(m) + vis.toString.toUpperCase + " METHOD " + id(name) + ": " + id(typed) + (index.map(" ("+_+")").getOrElse("")) + indent(
                                           noPos + "PARAMETERS" + indent(params :_*),
                                           noPos + "VARIABLES" + indent(vars :_*),
                                           noPos + "BODY" + indent(body :_*))
 
-    case v@Variable(name, t, offset, attr) =>
-      pos(v) + id(name) + ": " + id(t) + offset.map(" (" +_+ ")").getOrElse("")
+    case v@Variable(name, t, offset, attr, vis) =>
+      pos(v) + vis.toString.toUpperCase + " " + id(name) + ": " + id(t) + offset.map(" (" +_+ ")").getOrElse("")
 
     case r@Read(operand) =>
       pos(r) + "READ" + indent(operand)
@@ -79,6 +79,9 @@ object Output {
     case w@While(condition, body) =>
       pos(w) + "WHILE" + indent(condition, noPos + "DO" + indent(body :_*))
 
+    case w@Forever(body) =>
+      pos(w) + "FOREVER" + indent(body :_*)
+      
     case i@If(condition, body, Nil) =>
       pos(i) + "IF" + indent(condition, noPos + "DO" + indent(body :_*))
 

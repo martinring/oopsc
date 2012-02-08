@@ -16,8 +16,9 @@ object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
     val showHelp = flag("h", "Show this help")
     val showSymbols = flag("l", "Show results of lexical analysis")
     val showSyntax = flag("s", "Show results of syntactical analysis")
-    val showContext = flag("c", "Show results of context analysis")
-    val showVMTs = flag("v", "Show virtual method tables")    
+    val showContext = flag("c", "Show results of context analysis")    
+    val showVMTs = flag("v", "Show virtual method tables")  
+    val showOpt = flag("o", "Show results of optimization")
     val heapSize = namedArgument[Int]("hs", "Set heap size to %s (default is 100)") match {
       case Success(x,_)  => x
       case _ => 100
@@ -103,6 +104,15 @@ object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
   //  TODO: Optimization
   // -------------------------------------------------------------------------------------------------------------------
 
+  val optimized = Optimization.optimize(compilation._2)(compilation._1) match {
+    case Success(p, msgs) => msgs.print; p
+    case Errors(p, msgs) => msgs.print; p
+    case f => f.messages.print; sys.exit()
+  }
+  if (arguments.showOpt) {
+    section("Results of Optimization")
+    Output(optimized._2)
+  }
   
   // -------------------------------------------------------------------------------------------------------------------
   //  Code generation
@@ -110,7 +120,7 @@ object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
 
   //println(compilation._1.declarations.mkString("\n\n"))
 
-  val code = assembler.Code.generate(compilation._2)(compilation._1) match {
+  val code = assembler.Code.generate(optimized._2)(optimized._1) match {
     case Success(p, msgs) => msgs.print; p
     case Errors(p, msgs) => msgs.print; p
     case f => f.messages.print; sys.exit
