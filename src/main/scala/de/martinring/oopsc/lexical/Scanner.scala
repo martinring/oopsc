@@ -6,7 +6,7 @@ import scala.util.parsing.input.CharSequenceReader
  
 /**
  * This scanner processes OOPS code and produces a lazy stream of tokens. Whitespace is dropped.
- * The scanner distinguishes between keywords, identifiers, numbers and comments as defined in 
+ * The scanner distinguishes between keywords, identifiers and numbers as defined in 
  * [[de.martinring.util.oops.lexical.Tokens]]
  * @author Martin Ring
  */
@@ -15,8 +15,7 @@ object Scanner extends Scanners with Tokens {
 
   /** parses a single token */
   val token: Parser[Token] =
-    ( //comment ^^ Comment
-      keyword
+    ( keyword
     | identifier ^^ Identifier
     | integer ^^ Number
     | string

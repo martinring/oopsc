@@ -7,13 +7,14 @@ import de.martinring.oopsc.assembler.Code
 import util.parsing.input.Positional
 import com.sun.org.apache.bcel.internal.classfile.LocalVariable
 
-/*
- * Object for formatting internal data structures to be human readable
- * @ author Martin Ring
+/**
+ * The [[Output]] object provides functions for formatting internal data structures 
+ * to be human readable.
+ * @author Martin Ring
  */
 object Output {
-  /*
-   * Print tokens
+  /**
+   * Print out tokens that [[scanner]] recognized in a human readable format.
    */
   def apply(scanner: Scanner) {
     def p(scanner: Scanner) {
@@ -28,8 +29,8 @@ object Output {
     println
   }
 
-  /*
-   * Print abstract syntax tree
+  /**
+   * Print abstract syntax tree in a human readable format.
    */
   def apply(e: Element) {
     println(" Line | Col. | Parsed Element ")
@@ -38,7 +39,7 @@ object Output {
     println
   }
 
-  val lf = "\n"
+  private val lf = "\n"
 
   private def indent(s: Any*): String =
     s.map {

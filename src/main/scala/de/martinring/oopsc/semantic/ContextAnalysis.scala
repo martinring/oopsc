@@ -13,9 +13,9 @@ import de.martinring.util._
 
 
 /*
- * Object for the contextual analysis. Utilizes the @see Transform monad.
+ * Object for the contextual analysis. Utilizes the [[de.martinring.oopsc.Transform]] monad.
  */
-object ContextAnalysis {
+object ContextAnalysis {  
   def analyse(p: Program): Transform[Program] = for {
     _       <- bind(predefined) >> bind(p.classes)    
     classes <- sequence((p.classes ++ predefinedClasses) map (c => (signature(c.name))))    

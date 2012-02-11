@@ -6,6 +6,10 @@ import de.martinring.util.console.ConsoleApp
 import java.io._
 import scala.io.Source
 
+/**
+ * Main class and entry point of the OOPSC Compiler.
+ * @author Martin Ring
+ */
 object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
   // -------------------------------------------------------------------------------------------------------------------
   //  Read command line parameters
@@ -47,13 +51,13 @@ object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
     println("[failure] Unrecognized arguments (-h for help): " + arguments.unrecognized.mkString(", "))
   }
   
-  val t0 = System.nanoTime
+  private val t0 = System.nanoTime
   
   // -------------------------------------------------------------------------------------------------------------------
   //  Lexical analysis
   // -------------------------------------------------------------------------------------------------------------------
   
-  val tokens = new lexical.Scanner.Scanner(arguments.source)
+  private val tokens = new lexical.Scanner.Scanner(arguments.source)
   if (arguments.showSymbols) {
     section("Results of the Lexical Analysis")
     Output(tokens)
@@ -63,7 +67,7 @@ object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
   //  Syntactical analysis
   // -------------------------------------------------------------------------------------------------------------------
 
-  val p: Program = syntactic.Parser.program(tokens) match {
+  private val p: Program = syntactic.Parser.program(tokens) match {
     case s: syntactic.Parser.Success[Program] => s.result
     case f => println(f); sys.exit()
   }
@@ -77,7 +81,7 @@ object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
   //  Context analysis
   // -------------------------------------------------------------------------------------------------------------------
 
-  val compilation = ContextAnalysis.analyse(p)() match {
+  private val compilation = ContextAnalysis.analyse(p)() match {
     case Success(p, msgs) => msgs.print; p
     case Errors(p, msgs) => msgs.print; p
     case f => f.messages.print; sys.exit()
@@ -101,10 +105,10 @@ object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
   }
 
   // -------------------------------------------------------------------------------------------------------------------
-  //  TODO: Optimization
+  //  Optimization
   // -------------------------------------------------------------------------------------------------------------------
 
-  val optimized = Optimization.optimize(compilation._2)(compilation._1) match {
+  private val optimized = Optimization.optimize(compilation._2)(compilation._1) match {
     case Success(p, msgs) => msgs.print; p
     case Errors(p, msgs) => msgs.print; p
     case f => f.messages.print; sys.exit()
@@ -118,15 +122,17 @@ object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
   //  Code generation
   // -------------------------------------------------------------------------------------------------------------------
 
-  //println(compilation._1.declarations.mkString("\n\n"))
-
-  val code = assembler.Code.generate(optimized._2)(optimized._1) match {
+  private val code = assembler.Code.generate(optimized._2)(optimized._1) match {
     case Success(p, msgs) => msgs.print; p
     case Errors(p, msgs) => msgs.print; p
     case f => f.messages.print; sys.exit
   }
-      
-  val t = arguments.target()
+  
+  // -------------------------------------------------------------------------------------------------------------------
+  //  Output
+  // -------------------------------------------------------------------------------------------------------------------
+  
+  private val t = arguments.target()
   code._2.toString().lines.foreach(t.println(_))       
   t.flush()
   

@@ -3,7 +3,7 @@ package de.martinring.oopsc
 import scala.util.parsing.input.Position
 import scala.util.parsing.input.Positional
 
-/*
+/**
  * Base type for Compiler Messages
  * @author Martin Ring
  * @param pos the position in the source that this message referrs to

@@ -6,9 +6,9 @@ import de.martinring.oopsc._
 import de.martinring.oopsc.Transform._
 import de.martinring.util.Success
 
-/*
+/**
  * Code generation
- */
+ **/
 object  Code {
   var labelCounter = 0
   val stack = "_stack"
@@ -19,6 +19,9 @@ object  Code {
   val nullPointer = "_nullPointer"
   val outOfMemory = "_outOfMemory"    
   
+  /**
+   * Generate Code for an [[de.martinring.oopsc.syntactic.Element]].
+   */
   def generate(element: Element): Transform[Instr] = element match {
     case Program(classes) => for {
       classes   <- sequence(classes map (x => enter(x.name)(generate(x))))
