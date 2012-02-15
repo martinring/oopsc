@@ -12,9 +12,11 @@ object Parser extends TokenParsers {
   val lexical = de.martinring.oopsc.lexical.Scanner
   import lexical._
 
+  /** Parser for OOPS programs */
   def program: Parser[Program] = phrase( positioned (
       (classdecl+)                                        ^^ { Program(_) } ))
 
+  /** Parser for classes */
   def classdecl: Parser[Class] = positioned {
       CLASS ~> name ~ ( opt(EXTENDS ~> name ) <~ IS) ~
       ( memberdecl * ) <~
@@ -26,15 +28,18 @@ object Parser extends TokenParsers {
       }
   }
 
+  /** Parser for class members. (attributes and methods) */
   def memberdecl: Parser[List[Declaration]] =
     ( attribute <~ ";"
     | method                                              ^^ { List(_) } )
 
+  /** Parser for visibility annotations */
   def visibility: Parser[Visibility.Value] = opt (
       PRIVATE   ^^^ Visibility.Private
     | PROTECTED ^^^ Visibility.Protected
     | PUBLIC    ^^^ Visibility.Public ) ^^ (_ getOrElse Visibility.Public)
     
+  /** Parser for method declarations */
   def method: Parser[Method] =
     ( visibility ~ (METHOD ~> name) ~
       opt( "(" ~> rep1sep(variable, ";") <~ ")" ) ~
@@ -52,12 +57,15 @@ object Parser extends TokenParsers {
           None,
           vis) at id }
 
+  /** Parser for attributes */
   def attribute: Parser[List[Variable]] =
       visibility ~ rep1sep(name, "," ) ~ (":" ~> name)    ^^ { case v~ids~t => ids map (id => Variable(id, t, None, true, v) at id) }
 
+  /** Parser for variables */
   def variable: Parser[List[Variable]] =
       rep1sep(name, "," ) ~ (":" ~> name)                 ^^ { case ids~t => ids map (id => Variable(id, t, None, false) at id) }
 
+  /** Parser for `READ`, `WRITE`, `IF`, `WHILE`, `RETURN`, `CALL` and `ASSIGN` statements */
   def statement: Parser[Statement] = positioned(
       READ  ~> memberaccess <~ ";"                        ^^ { Read(_) }
     | WRITE ~> expr <~ ";"                                ^^ { Write(_) }
@@ -73,7 +81,7 @@ object Parser extends TokenParsers {
     | memberaccess ~ ":=" ~ disjunction <~ ";"            ^^ { case left~op~right => Assign(left, right) at op }
     | failure ("illegal start of statement"))
 
-  def elseIf: Parser[List[Statement]] =
+  private def elseIf: Parser[List[Statement]] =
     ( ELSE ~> (statement*)
     | ELSEIF ~ disjunction ~ ( THEN ~>
       (statement*) ~
@@ -89,7 +97,7 @@ object Parser extends TokenParsers {
    ( expr ~ ops ~ binopr(expr,ops) ^^ { case l ~ op ~ r => Binary(op.chars,l,r) at op }
    | expr )
   
-  def disjunction: Parser[Expression] = binopr(conjunction, OR ~> ELSE | OR)
+  def disjunction: Parser[Expression] = binopr(conjunction, OR ~> ELSE | OR)  
   def conjunction: Parser[Expression] = binopr(relation, AND ~> THEN | AND)
   def relation:    Parser[Expression] = binopl(expr,"="|"#"|"<"|">"|"<="|">=")  
   def expr:        Parser[Expression] = binopl(term,"+"|"-")
@@ -102,7 +110,7 @@ object Parser extends TokenParsers {
   def memberaccess: Parser[Expression] = 
       literal ~ ("." ~ varorcall *) ^^ 
     { case lit~vs => vs.foldLeft(lit){ case (l,(o~r)) => Access(l, r) at o }}
-
+  
   def literal: Parser[Expression] = positioned (
       number                                              ^^ { Literal.Int(_) }
     | FALSE                                               ^^^{ Literal.False }
@@ -131,7 +139,5 @@ object Parser extends TokenParsers {
     /** Convenience implicit to convert [[String]] literals to Parsers for the
       corresponding delimiter as defined in [[keywords]] **/
   implicit def delimiter(d: String): Parser[Keyword with Positional] = keyword(keywords.find(_.chars == d).get)
-  implicit def delimiter(d: Char):   Parser[Keyword with Positional] = keyword(keywords.find(_.chars == d.toString).get)
-  
-  def second[T](p: ~[_,T]) = p._2
+  implicit def delimiter(d: Char):   Parser[Keyword with Positional] = keyword(keywords.find(_.chars == d.toString).get)  
 }

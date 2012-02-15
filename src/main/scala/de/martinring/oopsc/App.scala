@@ -1,6 +1,7 @@
 package de.martinring.oopsc
 
 import de.martinring.oopsc.syntactic._
+import de.martinring.oopsc.output._
 import de.martinring.util._
 import de.martinring.util.console.ConsoleApp
 import java.io._
@@ -81,7 +82,7 @@ object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
   //  Context analysis
   // -------------------------------------------------------------------------------------------------------------------
 
-  private val compilation = ContextAnalysis.analyse(p)() match {
+  private val compilation = semantic.ContextAnalysis.analyse(p)() match {
     case Success(p, msgs) => msgs.print; p
     case Errors(p, msgs) => msgs.print; p
     case f => f.messages.print; sys.exit()
@@ -108,7 +109,7 @@ object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
   //  Optimization
   // -------------------------------------------------------------------------------------------------------------------
 
-  private val optimized = Optimization.optimize(compilation._2)(compilation._1) match {
+  private val optimized = semantic.Optimization.optimize(compilation._2)(compilation._1) match {
     case Success(p, msgs) => msgs.print; p
     case Errors(p, msgs) => msgs.print; p
     case f => f.messages.print; sys.exit()
@@ -122,7 +123,7 @@ object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
   //  Code generation
   // -------------------------------------------------------------------------------------------------------------------
 
-  private val code = assembler.Code.generate(optimized._2)(optimized._1) match {
+  private val code = synthesis.Code.generate(optimized._2)(optimized._1) match {
     case Success(p, msgs) => msgs.print; p
     case Errors(p, msgs) => msgs.print; p
     case f => f.messages.print; sys.exit

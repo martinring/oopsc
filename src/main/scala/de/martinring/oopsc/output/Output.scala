@@ -1,9 +1,9 @@
-package de.martinring.oopsc
+package de.martinring.oopsc.output
 
 import scala.io.Source
 import de.martinring.oopsc.syntactic._
 import de.martinring.oopsc.lexical.Scanner._
-import de.martinring.oopsc.assembler.Code
+import de.martinring.oopsc.synthesis.Code
 import util.parsing.input.Positional
 import com.sun.org.apache.bcel.internal.classfile.LocalVariable
 

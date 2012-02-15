@@ -1,14 +1,19 @@
-package de.martinring.oopsc
+package de.martinring.oopsc.semantic
 
 import de.martinring.oopsc.syntactic._
-import de.martinring.oopsc.Transform._
+import de.martinring.oopsc.semantic.Transform._
 
 /** 
+ * For optimization of OOPS code
  * @author Martin Ring
  */
 object Optimization {
   import Literal._
     
+  /**
+   * Optimizes an expression by calculating expressions including literals at
+   * compile time.
+   */
   def optimize(e: Expression): Expression = e match {                   
     case Unary(op,e,t) => optimizeUnary(Unary(op,optimize(e),t))
     case Binary(op,l,r,t) => optimizeBinary(Binary(op,optimize(l),optimize(r),t))
@@ -19,13 +24,13 @@ object Optimization {
     case expr => expr
   }
   
-  def optimizeUnary(e: Unary): Expression = e match {
+  private def optimizeUnary(e: Unary): Expression = e match {
     case Minus(Minus(x)) => x
     case Not(Not(x)) => x
     case x => x
   }
    
-  def optimizeBinary(e: Binary): Expression = e.operator match {
+  private def optimizeBinary(e: Binary): Expression = e.operator match {
     case "+" | "-" => e match {
       case Int(x) + Int(y) => Int(x+y)
       case Int(x) - Int(y) => Int(x-y)
@@ -74,20 +79,37 @@ object Optimization {
     case _ => e
   }
   
-  
+  /**
+   * optimizes all classes of a program
+   */
   def optimize(p: Program): Transform[Program] = for {
     classes <- sequence(p.classes map optimize)
   } yield Program(classes) at p
 
+  /**
+   * optimizes all methods of a class and updates the binding
+   */
   def optimize(c: Class): Transform[Class] = for {
     methods    <- sequence(c.methods map optimize)
     result     <- update(c.copy(methods = methods) at c)
   } yield result
 
+  /**
+   * optimizes all statements of a method and updates the binding
+   */
   def optimize(m: Method): Transform[Method] = for {
     result     <- update(m.copy(body = (m.body map optimize) flatten) at m)
   } yield result
 
+  /**
+   * optimizes a statement by optimizing all contained expressions and statements
+   * and:
+   * 
+   *  - `WHILE FALSE DO ...` gets erased
+   *  - `WHILE TRUE DO x` becomes `FOREVER DO x`
+   *  - `IF TRUE THEN x ELSE y` becomes `x`
+   *  - `IF FALSE THEN x ELSE y` becomes `y`
+   */
   def optimize(st: Statement): List[Statement] = st match {
     case w: Write =>
       List(Write(optimize(w.operand)))
@@ -121,59 +143,66 @@ object Optimization {
     case statement => List(statement)
   }     
 
-  
-  object Minus {
+  /** Extractor for unary `-`. Optimizes the operand. */
+  private object Minus {
     def apply(expr: Expression): Expression = Unary("-", expr, expr.typed)
     def unapply(expr: Expression): Option[Expression] = expr match {
-      case Unary("-", x, _) => Some(x)
+      case Unary("-", x, _) => Some(optimize(x))
       case _ => None
     }
   }    
   
-  object Not {
+  /** Extractor for unary `NOT`. Optimizes the operand. */
+  private object Not {
     def apply(expr: Expression): Expression = Unary("-", expr, expr.typed)
     def unapply(expr: Expression): Option[Expression] = expr match {
-      case Unary("-", x, _) => Some(x)
+      case Unary("-", x, _) => Some(optimize(x))
       case _ => None
     }
   }      
   
-  object - {    
+  /** Extractor for binary `-` expressions. optimizes the operands */
+  private object - {    
     def unapply(expr: Expression): Option[(Expression,Expression)] = expr match {      
       case Binary("-", x, y, _ ) => Some(optimize(x),optimize(y))
       case _ => None
     }
   }
   
-  object + {    
+  /** Extractor for binary `+` expressions. optimizes the operands */
+  private object + {    
     def unapply(expr: Expression): Option[(Expression,Expression)] = expr match {
       case Binary("+", x, y, _ ) => Some(x,y)
       case _ => None
     }
   }
   
-  object * {    
+  /** Extractor for binary `*` expressions. optimizes the operands */
+  private object * {    
     def unapply(expr: Expression): Option[(Expression,Expression)] = expr match {
       case Binary("*", x, y, _ ) => Some(x,y)
       case _ => None
     }
   }  
   
-  object / {    
+  /** Extractor for binary `/` expressions. optimizes the operands */
+  private object / {    
     def unapply(expr: Expression): Option[(Expression,Expression)] = expr match {
       case Binary("/", x, y, _ ) => Some(x,y)
       case _ => None
     }
   }  
   
-  object ∧ {    
+  /** Extractor for binary `AND` expressions. optimizes the operands */
+  private object ∧ {    
     def unapply(expr: Expression): Option[(Expression,Expression)] = expr match {
       case Binary("AND", x, y, _ ) => Some(x,y)
       case _ => None
     }
   }  
   
-  object ∨ {    
+  /** Extractor for binary `OR` expressions. optimizes the operands */
+  private object ∨ {    
     def unapply(expr: Expression): Option[(Expression,Expression)] = expr match {
       case Binary("OR", x, y, _ ) => Some(x,y)
       case _ => None

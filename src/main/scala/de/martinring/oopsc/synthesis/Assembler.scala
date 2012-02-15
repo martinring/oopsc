@@ -1,4 +1,6 @@
-package de.martinring.oopsc
+package de.martinring.oopsc.synthesis
+
+import de.martinring.oopsc._
 
 /**
  * Integrated DSL for generation of OOPSVM assembler code.

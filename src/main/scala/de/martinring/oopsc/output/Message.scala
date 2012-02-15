@@ -1,4 +1,4 @@
-package de.martinring.oopsc
+package de.martinring.oopsc.output
 
 import scala.util.parsing.input.Position
 import scala.util.parsing.input.Positional
@@ -18,9 +18,9 @@ abstract class Message(pos: Position, msg: String, prefix: String = "") {
   }
 }
 
-/* Info message */
+/** Info message */
 case class Info(pos: Position, msg: String) extends Message(pos, msg, "info")
-/* Warning */
+/** Warning */
 case class Warn(pos: Position, msg: String) extends Message(pos, msg, "warn")
-/* Error Message */
+/** Error Message */
 case class Error(pos: Position, msg: String) extends Message(pos, msg, "error")

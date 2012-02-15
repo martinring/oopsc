@@ -1,9 +1,10 @@
-package de.martinring.oopsc.assembler
+package de.martinring.oopsc.synthesis
 
+import de.martinring.oopsc.App
 import de.martinring.oopsc.syntactic._
-import de.martinring.oopsc.Assembler._
-import de.martinring.oopsc._
-import de.martinring.oopsc.Transform._
+import de.martinring.oopsc.synthesis.Assembler._
+import de.martinring.oopsc.semantic._
+import de.martinring.oopsc.semantic.Transform._
 import de.martinring.util.Success
 
 /**
