@@ -1,0 +1,114 @@
+\documentclass{style}
+
+\title{Extending the OOPS Compiler}
+
+\begin{document}
+
+\maketitle
+
+%=======================================================================================
+ 
+\section{\texttt{TRUE} and \texttt{FALSE}}
+
+Including the \texttt{TRUE} and \texttt{FALSE} literals is easy. First we include it in the list of keywords in \texttt{de.martinring.oopsc.lexical.Tokens}:
+
+\begin{lstlisting}
+  ...  
+  val keywords = SortedSet(
+    AND,BASE,BEGIN,CLASS,DO,ELSE,ELSEIF,END,EXTENDS,%\textbf{FALSE}%,IF,IS,ISA,METHOD,MOD,
+    NEW,NOT,NULL,OR,PRIVATE,PROTECTED,PUBLIC,READ,RETURN,SELF,THEN,%\textbf{TRUE}%,WHILE,
+    WRITE,ACCESS,ASSIGN,CLOSING_PARENTHESES,COMMA,DIVIDE,EQUAL,GREATER,
+    GREATER_OR_EQUAL,LESS,LESS_OR_EQUAL,MINUS,NOT_EQUAL,OPENING_PARENTHESES,
+    PLUS,SEMICOLON,TIMES,TYPE_OF)
+  ...  
+  case object FALSE     extends Keyword("FALSE")
+  ...
+  case object TRUE      extends Keyword("TRUE")
+  ...
+
+\end{lstlisting}
+
+And now it has to be included in the parser
+
+\begin{lstlisting}
+  def literal: Parser[Expression] = positioned (
+      number                         { Literal.Int( ) }
+    | FALSE                          { Literal.False }
+    | TRUE                           { Literal.True }
+    | NULL                           { Literal.Null }
+    | SELF                           { VarOrCall(new RelativeName("SELF")) }
+    | BASE                           { VarOrCall(new RelativeName("BASE")) }
+    | NEW ~> name                    { x => New(x) at x }
+    | "(" ~> disjunction <~ ")"
+    | varorcall 
+    | failure("expression expected"))
+
+\end{lstlisting}
+
+\section{\texttt{ELSE} and \texttt{ELSE IF}}
+
+We extend our \texttt{If} type by a new parameter \texttt{elseBody}
+
+\begin{lstlisting}
+  case class If(condition: Expression, body: List[Statement], 
+                %\textbf{elseBody}%: List[Statement]) extends Statement
+\end{lstlisting}
+
+Again, we introduce two new keywords in the \texttt{Lexical}
+
+\begin{lstlisting}
+  val reserved = Set(
+    "CLASS", "IS", "END", "METHOD", "BEGIN", "READ", "NEW",
+    "WRITE", "IF", "THEN", "WHILE", "DO", "MOD", "SELF",
+    "TRUE", "FALSE", %\textbf{"ELSE"}%, %\textbf{"ELSEIF"})%
+\end{lstlisting}
+
+Now we need new production rules in the syntax:
+
+\begin{lstlisting}
+  def statement: Parser[Statement] = 
+      ...
+    | "IF" ~> relation ~
+      "THEN" ~ (statement*) ~
+       opt(elseIf)  <~
+      "END" <~ "IF" { case cond~ ~body~elseBody => If(cond, body, elseBody getOrElse Nil) }    
+      ...
+
+  def elseIf: Parser[List[Statement]] = 
+      "ELSE" ~> (statement*)
+    | "ELSEIF" ~> relation ~ "THEN" ~
+      (statement*) ~
+      opt(elseIf)   { case cond~ ~body~elseBody => List(If(cond,body,elseBody getOrElse Nil)) }
+\end{lstlisting}    
+
+We also need to adjust the output in \texttt{Output.scala} and the code generation in \texttt{Code.scala}:
+
+\begin{lstlisting}
+    case If(condition, body, elseBody) => for {
+      condition <- generate(condition)
+      body <- sequence(body map generate)
+      elseBody <- sequence(elseBody map generate)
+      elseLabel <- nextLabel
+      endLabel <- nextLabel
+    } yield Instructions("IF")(
+      Instructions("CONDITION")(
+        condition,
+        R5 << ~R2 || "Get condition from stack",
+        R2 <<- R1,
+        R5 << (R5 === O) || "if 0 then",
+        Instruction("JPC", R5, elseLabel) || "jump to END IF"),        
+      Instructions("THEN")(
+        Instructions("")(body :*), 
+        R0 << endLabel),
+      Instructions("ELSE")(
+        Label(elseLabel),
+        Instructions("ELSE BODY")(elseBody :*)),
+      Label(endLabel))           
+\end{lstlisting}
+
+We introduce a new label \texttt{elseLabel} to which we jump if the condition is false. After the body of \texttt{THEN} we jump to \texttt{endLabel}
+
+
+
+
+\end{document}

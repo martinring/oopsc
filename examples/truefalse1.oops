@@ -1,10 +1,8 @@
 | Programm muss OK ausgeben und weder X noch Y
 CLASS Main IS
     METHOD main IS
-    BEGIN
-        IF TRUE THEN
-            WRITE 79;
-        END IF
+    BEGIN        
+        WRITE 79;        
         IF TRUE = TRUE THEN
             WRITE 75;
         END IF

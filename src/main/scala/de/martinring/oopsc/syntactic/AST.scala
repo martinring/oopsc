@@ -134,7 +134,7 @@ case class Assign(left: Expression, right: Expression) extends Statement
  * result if the method has a result type other than void. Otherwise the value
  * must be none.
  */
-case class Return(value: Option[Expression] = None) extends Statement {
+case class Return(value: Option[Expression] = None, offset: Int = 0) extends Statement {
   override def returns = true
 }
 

@@ -137,8 +137,8 @@ object Optimization {
     case a: Assign =>
       List(Assign(optimize(a.left), optimize(a.right)))
 
-    case r@Return(Some(expr)) =>
-      List(Return(Some(optimize(expr))))
+    case r@Return(Some(expr),o) =>
+      List(Return(Some(optimize(expr)),o))
 
     case statement => List(statement)
   }     

@@ -23,8 +23,8 @@
 \raggedbottom
 
 \definecolor{comment}{rgb}{0,.5,0}
-\definecolor{class}{rgb}{0.1686,.5686,6863}
-\definecolor{string}{rgb}{0..6392,0.0824,0.0824}
+\definecolor{class}{rgb}{0.1686,.5686,.6863}
+\definecolor{string}{rgb}{0.6392,0.0824,0.0824}
 \definecolor{light}{gray}{0.9286}
 
 \setlist{itemsep=.25pt,leftmargin=20pt,topsep=.5ex}
@@ -53,8 +53,9 @@
 		val, var, with, yield, false, null, true},%
 	sensitive=true,%
 	comment=[l]{//},%
+	escapechar=\%,
 	morecomment=[s]{/*}{*/},%
-	string=[b]"	
+	string=[b]{"}	
 }
 
 \lstset{%  
@@ -112,8 +113,6 @@
 \newcommand{\seeLst}[1]{$\vartriangleright$ \textsc{Listing} \ref{#1}}
 \newcommand{\seeUrl}[1]{$\vartriangleright$ \textsc{Url:} \url{#1}}
 \newcommand{\key}[1]{\texttt{\textbf{#1}}}
-
-\title{An OOPS Compiler Written in Scala}
 
 \author{Martin Ring}
 

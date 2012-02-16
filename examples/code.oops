@@ -12,7 +12,7 @@ CLASS Main IS
     BEGIN
         number := SELF.number;
         IF number < 0 THEN
-            WRITE 45;
+            WRITE 45;             
             number := -number;
         END IF
         exp := 10;

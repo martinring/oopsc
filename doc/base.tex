@@ -1,5 +1,7 @@
 \documentclass{style}
 
+\title{An OOPS Compiler written in Scala}
+
 \begin{document}
 
 \maketitle
@@ -8,116 +10,19 @@
 
 This document describes a compiler for the OOPS programming language. OOPS is a `fictional' language introduced in the course ``Übersetzer'' (Compiler) at the University of Bremen. No language specification exists, but the language is defined through an existing reference compiler written in Java.
 
-In the course students are required to extend the reference compiler with several features. The scala based compiler offers an alternative base, on which these features can be implemented, which utilizes functional concepts like parser combinators, algebraic data structures and transformation monads.      
+In the course students are required to extend the reference compiler with several features. This scala based compiler offers an alternative base, on which these features can be implemented, which utilizes functional concepts like parser combinators, algebraic data structures and state transformation monads.
  
 \section{Lexical Analysis}
 
 Because we want to use the parser combinators included in the standard Scala library we need to build a lexer that is compatible with the parser combinators. Luckyly this is very easy. The only thing we need to do is to use a lexer based on the \texttt{Scanner} class which is also included in the Scala standard Library. 
 
-First we define our tokens in \texttt{de.martinring.oopsc.parsing.Tokens.scala}:
+Tokens are defined in \texttt{de.martinring.oopsc.lexical.Tokens}. Keywords are represented by fly-weight tokens because position information is implicitly included in the Scanner and no further information is needed.
 
-\begin{lstlisting}[name=tokens]
-/*
- * Defines the tokens that are distinguished in the OOPS language.
- */
-trait OOPSTokens extends Tokens {
-  /* Represents a keyword (Reserved word or delimiter) */
-  case class Keyword(chars: String) extends Token  {
-    override def toString = Lexical.delimiters(chars)
-  }
-  /* Represents a number literal */
-  case class Number(chars: String) extends Token {
-    require(!chars.exists(x => !('0' to '9').contains(x)))
-    val value = chars.toInt
-    override def toString = "NUMBER " + chars
-  }
-  /* Represents an identifier */
-  case class Identifier(chars: String) extends Token {
-    override def toString = "IDENTIFIER " + chars
-  }
-}
-\end{lstlisting}
-
-That is pretty straight forward and self explaining. Next thing we do is define a Scanner which processes a \texttt{Source} and produces a stream of tokens that can be consumed by our parser. So we define an object \texttt{Lexical}
-
-\begin{lstlisting}[name=lexical]
-package de.martinring.oopsc.parsing
-
-import scala.util.parsing.combinator.lexical.Scanners
-import scala.util.parsing.input.CharArrayReader.EofCh
-
-object Lexical extends Scanners with OOPSTokens {
-\end{lstlisting}
-
-and define reserved words and delimiters:
-
-\begin{lstlisting}[name=lexical]
-  /* set of reserved words which are parsed as keyword tokens */
-  val reserved = Set(
-    "CLASS", "IS", "END", "METHOD", "BEGIN", "READ", "NEW",
-    "WRITE", "IF", "THEN", "WHILE", "DO", "MOD", "SELF")
-
-  /* set of delimiter symbols which are parsed as keyword tokens */
-  val delimiters = Map(
-      "#" -> "NOT EQUAL",
-      "(" -> "OPENING PARENTHESES",
-      ")" -> "CLOSING PARENTHESES",
-      "*" -> "TIMES",
-      "+" -> "PLUS",
-      "-" -> "MINUS",
-      "." -> "ACCESS",
-      "/" -> "DIVIDE",
-      ":=" -> "ASSIGN",
-      ":" -> "TYPE OF",
-      ";" -> "SEMICOLON",
-      "<=" -> "LESS OR EQUAL",
-      "<" -> "LESS",
-      "=" -> "EQUAL",
-      ">=" -> "GREATER OR EQUAL",
-      ">" -> "GREATER") withDefault identity
-
-\end{lstlisting}
-
-next we define parsers for white space, letters and digits.
-
-\begin{lstlisting}[name=lexical]
-  /* parses whitespace and comments and drops them */
-  def whitespace: Parser[Any] =
-    ( whitespaceChar
-    | '{' ~ allExcept(EofCh) ~ '}'
-    | '|' ~ rep(allExcept(EofCh, '\n'))
-    | '{' ~ failure("unclosed comment") )*
-
-  /* parses characters A-Z and a-z */
-  val letter = elem("letter", ch => 'A' <= ch && ch <= 'Z' || 'a' <= ch && ch <= 'z')
-
-  /* parses characters 0-9 */
-  val digit = elem("digit", ch => '0' <= ch && ch <= '9')
-
-  /* parses all characters between 0x00 and 0x20 except EOT (0x04) */
-  val whitespaceChar = elem("space char", ch => ch <= ' ' && ch != EofCh)
-
-  /* decides if a sequence of chars is an identifier or a keyword by looking up if it is contained in the list
-  of reserved words */
-  def identifierOrKeyword(name: String) =
-    if (reserved contains name) Keyword(name) else Identifier(name)
-\end{lstlisting}
-
-last but not least we need to define a combined parser, that can parse a \texttt{Token}. This is our lexer and we can now process OOPS files and get a stream of tokens:
-
-\begin{lstlisting}[name=lexical]
-  /* parses a single token which can be an identifier, a keyword or a number */
-  def token: Parser[Token] =
-    ( letter ~ (letter|digit*)     ^^ { case first ~ rest => identifierOrKeyword(first :: rest mkString "") }
-    | (digit+)                     ^^ { case digits => Number(digits mkString "") }
-    | EofCh                        ^^^  EOF
-    | delim
-    | failure("illegal character") )
-\end{lstlisting}
+The scanner which processes a \texttt{scala.io.Source} and produces a stream of tokens that can be consumed by our parser is defined in \texttt{de.martinring.oopsc.lexical.Scanner}.
 
 \section{Syntactical Analysis}
 
-The syntactical analysis requires us to create an AST. That is very straight forward, because the abstract syntax is given. So all we need to do is to translate it into algebraic types: (this is from \texttt{de.martinring.oopsc.ast})
+The syntactical analysis requires us to create an AST. That is very straight forward, because the abstract syntax is given. So all we need to do is to translate it into algebraic types: (this is from \texttt{de.martinring.oopsc.syntactic})
 
 \begin{lstlisting}[name=syntax]
 trait Element extends Positional
@@ -154,9 +59,9 @@ case class Name(name: String) extends Expression
 
 All nodes of the AST derrive from \texttt{Element} which mixes in the \texttt{Positional} trait from the Scala standard library to store position information.
 
-there are four types of elements: \texttt{Program}s, \texttt{Declaration}s, \texttt{Statement}s and \texttt{Expression} which are all represented by traits. \texttt{Declaratin} has a subtrait \texttt{Member} which is implemented by \texttt{Attribute} and \texttt{Method} because these two can be a member of a class unlike \texttt{Variable} wich derrives directly from \texttt{Declaration}. The rest of the AST is so close to the Java equivalent that it needs no further explanation.
+there are four types of elements: \texttt{Program}s, \texttt{Declaration}s, \texttt{Statement}s and \texttt{Expression} which are all represented by traits. \texttt{Declaration} has a subtrait \texttt{Member} which is implemented by \texttt{Attribute} and \texttt{Method} because these two can be a member of a class unlike \texttt{Variable} wich derrives directly from \texttt{Declaration}. The rest of the AST is so close to the Java equivalent that it needs no further explanation.
 
-So now, that we have our AST defined we need to build a parser, that consumes the token stream our scanner produces to produce an AST itself. To achieve this we utilize \texttt{scala.util.parsing.combinator.syntactical.TokenParsers}. First we need to rewrite our syntax using parser combinators (\texttt{de.martinring.oopsc.parsing}).
+So now, that we have our AST defined we need to build a parser, that consumes the token stream our scanner produces to produce an AST itself. To achieve this we utilize \texttt{scala.util.parsing.combinator.syntactical.TokenParsers}. First we need to rewrite our syntax using parser combinators (\texttt{de.martinring.oopsc.syntactic.Parser}).
 
 \lstset{belowskip=5pt}
 \begin{lstlisting}[name=parser]
@@ -235,9 +140,9 @@ def literal =
   | name ) 
 \end{lstlisting}
 
-the used combinators are for concatenation, to ignore a result, \texttt{*} for zero or more occurrences and \texttt{+} for one or more.
+the used combinators are \texttt{\textasciitilde} for concatenation, \texttt{\textasciitilde >} and \texttt{<\textasciitilde} to ignore a result, \texttt{*} for zero or more occurrences and \texttt{+} for one or more.
 
-To write keywords as strings as we did, we use a trick and define an implicit function that converts a string into a keyword parser:
+To write keywords as strings it's done here, an implicit function that converts a string into a keyword parser is defined:
 
 \begin{lstlisting}[name=parser]
 implicit def keyword(k: String) = accept(Keyword(k))
@@ -253,15 +158,15 @@ The problem with all this is, that it produces cryptic data structures. And we a
       { case id~ ~ms => Class(id.name, ms.flatten) at id }
 \end{lstlisting}
 
-we also need to wrap every parser with the \texttt{positional} parser which preserves the position information from the scanner and writes it to our \texttt{Element}s.
+we also need to wrap some parsers with the \texttt{positional} parser which preserves the position information from the scanner and writes it to our \texttt{Element}s.
 
-For the full parser take a look at \texttt{Parser.scala}
+For the full parser take a look at \texttt{de.martinring.oopsc.syntactic.Parser}
 
 \section{Context Analysis}
 
-For the context analysis we need to refine our AST a little bit. Such as including type information in Expressions, offsets in Variables and introduce types for boxing, unboxing and dereferencing expressions. There is no magic to all that so we leave it at that and don't waste paper with that code.
+For the context analysis we need to refine our AST a little bit. Such as including type information in Expressions, offsets in Variables and introduce types for boxing, unboxing and dereferencing expressions. There is no magic to all that so we leave it at that and don't waste paper with that code. It can be found in \texttt{AST.scala}.
 
-The concept for the context analysis is to use a monad and the \texttt{for} blocks (Which are the scala equivalent to haskells do notation). The monad shall carry a declaration table as state and be able to collect errors on the go with or without failing. Unfortunately the scala type inference is not as strong as the type inference of Haskell which is why some experiments with monad transformers failed. So we need to build one big monad to rule them all. We call it the \texttt{Transform} monad:
+The concept for the context analysis is to use a monad and the \texttt{for} blocks (Which are the scala equivalent to haskells \texttt{do} notation). The monad shall carry a declaration table as state and be able to collect errors on the go with or without failing. Unfortunately the scala type inference is not as strong as the type inference of Haskell which is why some experiments with monad transformers failed. So we need to build one big monad to rule them all: We call it the \texttt{Transform} monad:
 
 \begin{lstlisting}
 trait Transform[A] {
@@ -314,7 +219,7 @@ For the entire context analysis see \texttt{ContextAnalysis.scala}
 
 \section{Code Generation}
 
-The code generation also utilizes the \texttt{Transform} monad to resolve types and so on. Which means, that we still need to explicitly enter and leave scopes when generating code for classes or methods. In \texttt{Assembler.scala} we defined a DSL for the Assembler code that we can use here. This is just playing around with the DSL-capabilities of scala and doesn't need to be thoroughly understood.
+The code generation also utilizes the \texttt{Transform} monad to resolve types and so on. Which means, that we still need to explicitly enter scopes when generating code for classes or methods. \texttt{de.martinring.oopsc.Assembler} defines a DSL for the Assembler code that is utilized here. This is just playing around with the DSL-capabilities of scala and doesn't need to be thoroughly understood.
 
 Again, let's illustrate with an example
 
@@ -337,9 +242,9 @@ Again, let's illustrate with an example
     end + ":"       |> "End of program" )
 \end{lstlisting}
 
-this is pretty straight forward and only copied from the java implementation. For the full source look at \texttt{Code.scala}
+this is pretty straight forward and only copied from the java implementation. For the full source look at \texttt{de.martinring.oopsc.Code}
 
-\section{Summing up}
+\section{Conclusions}
 
 I think the biggest structural advantage of the Scala code is, that it is very aspect oriented. Which means there is a file that defines the plain AST types, a file that defines the syntax, a file for the context analysis and so on. In a Java-like approach all that is mixed up and spread across all the AST files which can get very confusing.
 

@@ -123,19 +123,15 @@ object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
   //  Code generation
   // -------------------------------------------------------------------------------------------------------------------
 
-  private val code = synthesis.Code.generate(optimized._2)(optimized._1) match {
-    case Success(p, msgs) => msgs.print; p
-    case Errors(p, msgs) => msgs.print; p
-    case f => f.messages.print; sys.exit
-  }
+  synthesis.Code.generate(optimized._2)(optimized._1) 
   
   // -------------------------------------------------------------------------------------------------------------------
   //  Output
   // -------------------------------------------------------------------------------------------------------------------
   
   private val t = arguments.target()
-  code._2.toString().lines.foreach(t.println(_))       
+  synthesis.Code.instructions.foreach(t.println)
   t.flush()
   
-  println("[success] total time: " + ((System.nanoTime - t0) / 1000000) + " ms")
+  println("[success] total time: " + ((System.nanoTime - t0) / 1000000) + " ms")  
 }

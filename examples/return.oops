@@ -1,0 +1,15 @@
+| Programm muss ABCD ausgeben
+| Stack- und Heapgröße müssen möglicherweise erhöht werden
+CLASS Main IS
+    METHOD main IS        	
+    BEGIN
+        WRITE NEW Main.test;
+    END METHOD
+    
+    METHOD test : Integer IS
+	    a: Integer;
+    BEGIN        
+	    a := 67;
+        RETURN a;
+    END METHOD
+END CLASS

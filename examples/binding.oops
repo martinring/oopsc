@@ -24,7 +24,7 @@ CLASS B EXTENDS A IS
 END CLASS
 
 CLASS Main IS
-    METHOD main IS
+    METHOD main: Integer IS
         a : A;
         b : B;
         c : A;
@@ -33,7 +33,7 @@ CLASS Main IS
         b := NEW B;
         a.a := 65;
         b.a := 66;
-        c := b;
+        c := A;
         c.a := a.a;
         a.print;     | A
         b.print;     | B

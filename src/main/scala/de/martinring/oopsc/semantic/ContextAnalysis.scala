@@ -205,15 +205,15 @@ object ContextAnalysis {
       right <- analyse(a.right) >>= box >>= requireType(left.typed)
     } yield Assign(left, right) at a
 
-    case r@Return(Some(expr)) => for {
+    case r@Return(Some(expr), _) => for {
       m     <- currentMethod.map(_.getOrElse(sys.error("not in a method"))) >>= getMethod
       expr  <- analyse(expr) >>= box >>= requireType(m.typed)
-    } yield Return(Some(expr)) at r
+    } yield Return(Some(expr), m.variables.size + 3 + m.parameters.size) at r
 
-    case r@Return(None) => for {
+    case r@Return(None, _) => for {
       m     <- currentMethod.map(_.getOrElse(sys.error("not in a method"))) >>= getMethod
       expr  <- throwIf(m.typed != voidType.name)(("expected " + m.typed) at r)
-    } yield r
+    } yield r.copy(offset = m.variables.size + 3 + m.parameters.size)
   }
 
   /**

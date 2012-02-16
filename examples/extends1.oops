@@ -1,12 +1,12 @@
 | Dieses Programm testet statische und dynamische Bindung.
 | Die Ausgabe sollte ABBAA sein.
 CLASS A IS
-    a : Integer;
-  
-    METHOD print IS
-    BEGIN
-        WRITE a;
-    END METHOD
+  a : Integer;
+
+  METHOD print IS
+  BEGIN
+      WRITE a;
+  END METHOD
 END CLASS
 
 CLASS B EXTENDS A IS
@@ -24,7 +24,10 @@ CLASS B EXTENDS A IS
     END METHOD
 END CLASS
 
-CLASS Main IS
+CLASS Main EXTENDS K IS 
+END CLASS
+
+CLASS K IS
     METHOD main IS
         a : A;
         b : B;
