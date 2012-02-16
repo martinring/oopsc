@@ -1,5 +1,3 @@
-import AssemblyKeys._ 
-
 name := "oopsc"
 
 version := "1.0"
@@ -14,12 +12,8 @@ mainClass in (Compile, packageBin) := Some("de.martinring.oopsc.App")
 
 mainClass in (Compile, run) := Some("de.martinring.oopsc.App")
 
-resolvers ++= Seq("snapshots" at "http://scala-tools.org/repo-snapshots",
-                  "releases"  at "http://scala-tools.org/repo-releases")
-                  
-libraryDependencies ++= Seq(
-  "org.scalaz" %% "scalaz-core" % "6.0.3",
-  "de.martinring" %% "util" % "1.0",
-  "org.specs2" %% "specs2" % "1.7.1" % "test")  
+resolvers += "Scala Tools Snapshots" at "http://scala-tools.org/repo-snapshots/"
 
-seq(assemblySettings: _*)
+libraryDependencies += "org.scalaz" %% "scalaz-core" % "6.0.3"
+
+seq(netbeans.NetbeansTasks.netbeansSettings:_*)

@@ -14,7 +14,9 @@ import de.martinring.util.Failable._
 case class Context(path:         List[String] = Nil,
                    aliases:      Map[List[String], List[String]] = Map(),
                    declarations: Map[List[String], Declaration] = Map(),
-                   vmts:         Map[AbsoluteName, List[AbsoluteName]] = Map())
+                   vmts:         Map[Name, List[AbsoluteName]] = Map()) {
+  def get(n: AbsoluteName): Declaration = declarations.get(n.path).getOrElse(declarations(aliases(n.path)))
+}
 
 /*
  * Transform monad combining a state monad carrying a [[de.martinring.oopsc.semantic.Context]]

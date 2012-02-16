@@ -1,6 +1,0 @@
-CLASS Main IS  
-  METHOD main IS            
-  BEGIN     
-    WRITE 65;
-  END METHOD    
-END CLASS
