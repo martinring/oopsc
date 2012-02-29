@@ -3,7 +3,7 @@ package de.martinring.oopsc.output
 import scala.io.Source
 import de.martinring.oopsc.syntactic._
 import de.martinring.oopsc.lexical.Scanner._
-import de.martinring.oopsc.synthesis.Code
+//import de.martinring.oopsc.synthesis.Code
 import util.parsing.input.Positional
 import com.sun.org.apache.bcel.internal.classfile.LocalVariable
 
@@ -95,7 +95,7 @@ object Output {
     case a@Assign(left, right) =>
       pos(a) + "ASSIGN" + indent(left, right)
 
-    case r@Return(expr,_) =>
+    case r@Return(expr) =>
       pos(r) + "RETURN" + (expr match {
         case Some(e) => indent(e)
         case _       => ""

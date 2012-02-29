@@ -99,7 +99,7 @@ object ContextAnalysis {
   def signature(m: Method): Transform[Method] = for {
     name   <- resolve(m.name)
     _      <- bind(m.parameters) >> bind(m.variables)
-    params <- sequence(m.parameters.zip(-1-m.parameters.size until -1) map analyse)    
+    params <- sequence(m.parameters.zip(-m.parameters.size to -1) map analyse)    
     typed  <- resolveClassName(m.typed)
     self   <- currentClass
     vmt    <- currentClass >>= getVMT
@@ -150,9 +150,9 @@ object ContextAnalysis {
     self       <- currentClass
     base       <- getType(self) map (_.baseType.get)
     path       <- path
-    _          <- bind(Variable(m.name.asInstanceOf[AbsoluteName] / "SELF", self, Some(-2-m.parameters.size), false)) >>
-                  bind(Variable(m.name.asInstanceOf[AbsoluteName] / "BASE", base, Some(-2-m.parameters.size), false))
-    variables  <- sequence(m.variables.zip(1 to m.variables.size) map analyse)
+    _          <- bind(Variable(m.name.asInstanceOf[AbsoluteName] / "SELF", self, Some(-1-m.parameters.size), false)) >>
+                  bind(Variable(m.name.asInstanceOf[AbsoluteName] / "BASE", base, Some(-1-m.parameters.size), false))
+    variables  <- sequence(m.variables.zip(0 until m.variables.size) map analyse)
     body       <- sequence(m.body map analyse)
     val (b,t)   = body.span(!_.returns) // Partition body in parts before and after return
     _          <- throwIf(m.typed != voidType.name && !body.exists(_.returns))(("missing return in method " + m.name) at m) >>
@@ -205,15 +205,15 @@ object ContextAnalysis {
       right <- analyse(a.right) >>= box >>= requireType(left.typed)
     } yield Assign(left, right) at a
 
-    case r@Return(Some(expr), _) => for {
+    case r@Return(Some(expr)) => for {
       m     <- currentMethod.map(_.getOrElse(sys.error("not in a method"))) >>= getMethod
       expr  <- analyse(expr) >>= box >>= requireType(m.typed)
-    } yield Return(Some(expr), m.variables.size + 3 + m.parameters.size) at r
+    } yield Return(Some(expr)) at r
 
-    case r@Return(None, _) => for {
+    case r@Return(None) => for {
       m     <- currentMethod.map(_.getOrElse(sys.error("not in a method"))) >>= getMethod
       expr  <- throwIf(m.typed != voidType.name)(("expected " + m.typed) at r)
-    } yield r.copy(offset = m.variables.size + 3 + m.parameters.size)
+    } yield r
   }
 
   /**

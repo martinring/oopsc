@@ -7,75 +7,96 @@ import scala.collection.mutable.Buffer
  * Integrated DSL for generation of OOPSVM assembler code.
  */
 trait Assembler {    
-  var labelCounter = 0
+  protected var labelCounter = 0
   
-  val instructions = Buffer[String]()
+  protected val instructions = Buffer[String]()
   
-  implicit def instrToString(i: Instr) = i.toString
+  protected implicit def instrToString(i: Instr) = i.toString
   
-  var freeRegisters = List[R](R1,R2,R3,R4,R5,R6,R7)
-  var usedRegisters: Map[Symbol,R] = Map()
-  val one: R = 'one
+  private var freeRegisters = List[R]()
+  private var usedRegisters: Map[Symbol,R] = Map()
   
-  def force(r: R): R = {
-    freeRegisters = freeRegisters.filter(_ != r)
-    return r
+  protected def init() = {
+    instructions.clear
+    freeRegisters = List[R](R1,R2,R3,R4,R5,R6,R7)   
+    usedRegisters = Map()
+    'one := 1
+  }    
+  
+  protected def force(r: R*) = {
+    freeRegisters = freeRegisters.filter(!r.contains(_))    
   }
   
-  'one := 1
-
-  val error: String = "_error"
+  protected def print(r: R) = local {    
+    labelCounter = labelCounter + 1
+    val l = "_print_" + labelCounter
+    val e = "_print_" + labelCounter + "_end"
+    label(l)
+    'current := ~r
+    gotoIf('current === O)(e)
+    write('current)
+    r += 1
+    goto(l)
+    label(e)
+  }
   
-  def error(label: String) {
-    R7 := label
-    goto(error)
-  }  
-  
-  def string(s: String) {
-    ("\n"+s+"\n").toList.foreach { case x: Char => Instruction("DAT",1,x.toInt) }
+  protected def string(s: String) {
+    for (x <- s) Instruction("DAT",1,x.toInt)
     Instruction("DAT",1,0)    
   }  
   
-  implicit def symToR(sym: Symbol): R = 
-    usedRegisters.get(sym).getOrElse {      
-      if (freeRegisters.size < 0) instructions foreach println
+  protected implicit def symToR(sym: Symbol): R =
+    usedRegisters.get(sym).getOrElse {
       require(freeRegisters.size > 0, sym.name + " can not be bound " + usedRegisters.mkString(", "))
       val r = freeRegisters.head
-      instructions.append("; " + r + ": " + sym.name)
       freeRegisters = freeRegisters.tail
       usedRegisters = usedRegisters.updated(sym, r)
       return r
-    }  
+    }              
   
-  def free(r: Symbol*) = r.foreach{ s =>
+  protected def debugInfo(s: => String) = if (App.arguments.debugMode) {
+    instructions.append("; " + s)
+  }
+  
+  protected def free(r: Symbol*) = r.foreach{ s =>
     freeRegisters = usedRegisters(s) :: freeRegisters
     usedRegisters -= s
   }    
   
-  def goto(label: String) = R0 := label
-  def goto(r: R) = R0 := r
-  def gotoIf(c: R)(t: Any) = Instruction("JPC", c, t)
+  protected def goto(label: String) = {
+    debugInfo("goto " + label)
+    R0 := label
+  }
+  protected def goto(r: R) = {
+    debugInfo("goto " + nameOf(r))
+    R0 := r 
+  }
+  protected def gotoIf(c: R)(t: Any) = {
+    debugInfo("if " + nameOf(c) + " then goto " + t)
+    Instruction("JPC", c, t)
+  }
   
-  def read:(R => Unit) = (r => Instruction("SYS", 0, r.x))
-  def write(r: R) = Instruction("SYS", 1, r.x)
+  protected def read:(R => Unit) = (r => Instruction("SYS", 0, r.x))
+  protected def write(r: R) = Instruction("SYS", 1, r.x)
   
-  val end = "_end"  
+  protected val end = "_end"  
   
-  def local (body: => Unit) {    
+  protected def local (body: => Unit) {    
     val before = (freeRegisters,usedRegisters)
     body
     freeRegisters = before._1
     usedRegisters = before._2    
   }
     
-  implicit def deref (f: R => Unit): R = {
+  protected implicit def temporary (f: R => Unit): R = {    
     val r = freeRegisters.head
+    freeRegisters = freeRegisters.tail :+ freeRegisters.head
     f(r)
     return r
   }
   
   /** Base trait for assembler instructions */  
-  trait Instr {        
+  protected trait Instr {        
     var comment: String = ""
     def || (comment: String) = {
       this.comment = "; " + comment
@@ -86,7 +107,7 @@ trait Assembler {
   /** Assembler instruction 
    * @param name The name of the instruction
    * @param args The arguments to passt to the instruction */
-  case class Instruction(name: String, args: Any*) extends Instr {
+  protected case class Instruction(name: String, args: Any*) extends Instr {
     instructions.append(this)
     override def toString = {
       name + " " + args.mkString(", ") + comment
@@ -94,16 +115,15 @@ trait Assembler {
   }  
   
   /** Generates a label with the passed identifier */
-  case class Label(label: String) extends Instr {
-    instructions.append(this)
-    override def toString = label + ": " + comment
+  protected def label(label: String) {
+    instructions.append(label + ":")    
   }
 
   /** Represents the number zero for comparisons */
-  object O
+  protected object O
 
   /** Base class for registers */
-  sealed abstract class R(val x: Int) {    
+  protected sealed abstract class R(val x: Int) {    
     /** Assign value n to this register */
     def := (n: Int) = Instruction("MRI", this, n)
     /** Assign value of register Ry to this register */
@@ -120,7 +140,7 @@ trait Assembler {
     }
     def := (f: R => Unit) = f(this)
     /** Assign result of this + Ry to this */        
-    def += (Ry: R) = Instruction("ADD", this, Ry)    
+    def += (Ry: R) = { require(x != 1) ; Instruction("ADD", this, Ry) }
     /** Assign result of this - Ry to this */
     def -= (Ry: R) = Instruction("SUB", this, Ry)
     /** Assign result of this * Ry to this */
@@ -148,20 +168,22 @@ trait Assembler {
     /** Dereference */
     def unary_~ = Address(this)
     
+    def unary_! = this === O
+    
     override def toString = "R" + x
   }  
   
-  object R0 extends R(0)
-  object R1 extends R(1)
-  object R2 extends R(2)
-  object R3 extends R(3)
-  object R4 extends R(4)
-  object R5 extends R(5)
-  object R6 extends R(6)
-  object R7 extends R(7)
+  protected object R0 extends R(0)
+  protected object R1 extends R(1)
+  protected object R2 extends R(2)
+  protected object R3 extends R(3)
+  protected object R4 extends R(4)
+  protected object R5 extends R(5)
+  protected object R6 extends R(6)
+  protected object R7 extends R(7)
 
   /** Dereferenced Register */  
-  case class Address(address: R) {
+  protected case class Address(address: R) {
     def := (Ry: R): Instr = Instruction("MMR", this, Ry)
     def := (label: String): Unit = local {
       'value := label
@@ -172,11 +194,11 @@ trait Assembler {
       this := 'value
     }
     override def toString = "(" + address + ")"
-  }
-
-  val stackOverflow = "_stackOverflow"
+  } 
+    
+  private def nameOf(r: R): String = usedRegisters.toSeq.find(_._2 == r).map(_._1.name).getOrElse(r.toString)
   
-  case class Stack(name: String, size: Int) {            
+  protected case class Stack(name: String, size: Int) {            
     val r: R = Symbol(name)
     val start = (name + "_start")
     val end = (name + "_end")
@@ -184,33 +206,37 @@ trait Assembler {
     r := start    
     
     def allocate() {
-      Label(start)
+      label(start)
       Instruction("DAT", size, 0)
-      Label(end)
+      label(end)
+    }
+    
+    def push(label: String): Unit = local {
+      debugInfo(name + ".push(" + label + ")") 
+      'val := label
+      r += 1
+      ~r := 'val
     }
     
     def push(r2: R): Unit = {
-      labelCounter += 1
-      val skip = "stackPush_" + r2 + "_" + labelCounter
-      local { // Check if there is space left
-        r -= end                
-        gotoIf(r < O)(skip) // if there is space left, we skip the error
-        error(stackOverflow)
-        Label(skip)
-        r += end
-      }
-      r += one
-      ~r := r2     
+      debugInfo(name + ".push(" + nameOf(r2) + ")")      
+      r += 1
+      ~r := r2
     }
     
     def pop(): (R => Unit) = (r2 => {
+      debugInfo(nameOf(r2)+" = "+name+".pop")  
       r2 := ~r
-      r -= R1
+      r -= 1
     })
   
-    def top(): (R => Unit) = (r2 => r2 := ~r)
+    def top(): (R => Unit) = { r2 => 
+      debugInfo(nameOf(r2)+" = "+name+".top")
+      r2 := ~r
+    }
     
     def update(r2: R) {
+      debugInfo(name + ".update(" + nameOf(r2) + ")")
       ~r := r2
     }
     
@@ -218,14 +244,14 @@ trait Assembler {
   }
 
   
-  implicit def label(s: String): R = {
+  protected implicit def labelValue(s: String): R = {
     val r = freeRegisters.head
     r := s
     return r
   }
   
-  implicit def int(i: Int): R = i match {
-    case 1 => R1
+  protected implicit def int(i: Int): R = i match {
+    case 1 => 'one
     case i => 
       val r = freeRegisters.head
       r := i
@@ -233,12 +259,12 @@ trait Assembler {
     }
 
   /** Conditions */
-  trait Condition
-  case class ISZ(Ry: R) extends Condition
-  case class ISP(Ry: R) extends Condition
-  case class ISN(Ry: R) extends Condition  
+  protected trait Condition
+  protected case class ISZ(Ry: R) extends Condition
+  protected case class ISP(Ry: R) extends Condition
+  protected case class ISN(Ry: R) extends Condition  
   
-  implicit def cond(c: Condition): R = {
+  protected implicit def cond(c: Condition): R = {
     val r = freeRegisters.head
     r := c
     return r

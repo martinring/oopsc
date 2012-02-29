@@ -12,10 +12,11 @@ import de.martinring.util.Failable._
  * @author Martin Ring
  */
 case class Context(path:         List[String] = Nil,
-                   aliases:      Map[List[String], List[String]] = Map(),
-                   declarations: Map[List[String], Declaration] = Map(),
-                   vmts:         Map[Name, List[AbsoluteName]] = Map()) {
+                   aliases:      Map[List[String], List[String]] = Map.empty,
+                   declarations: Map[List[String], Declaration] = Map.empty,
+                   vmts:         Map[Name, List[AbsoluteName]] = Map.empty) {
   def get(n: AbsoluteName): Declaration = declarations.get(n.path).getOrElse(declarations(aliases(n.path)))
+  def getVMT(n: Name): List[AbsoluteName] = vmts.getOrElse(n.asInstanceOf[AbsoluteName],Nil)
 }
 
 /*
@@ -76,7 +77,7 @@ trait Transform[A] {
  * monad.
  * @author Martin Ring
  */
-object Transform {
+object Transform { 
   /** build a transform monad */
   def transform[A](f: Context => Failable[(Context, A),Message]) =
     new Transform[A] { def apply(c: Context) = f(c) }

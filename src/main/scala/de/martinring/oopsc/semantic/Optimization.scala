@@ -112,14 +112,14 @@ object Optimization {
    */
   def optimize(st: Statement): List[Statement] = st match {
     case w: Write =>
-      List(Write(optimize(w.operand)))
+      List(Write(optimize(w.operand)) at w)
 
     case w: While =>
       lazy val body = (w.body map optimize).flatten
       optimize(w.condition) match {
         case Literal.False => Nil // while false => _
         case Literal.True  => List(Forever(body))
-        case cond => List(While(cond, body))
+        case cond => List(While(cond, body) at w)
       }
 
     case i: If =>
@@ -128,84 +128,45 @@ object Optimization {
       optimize(i.condition) match {
         case Literal.True  => body // if true then else => then
         case Literal.False => elseBody // if false then else => else
-        case cond => List(If(cond, body, elseBody))
+        case cond => List(If(cond, body, elseBody) at i)
     }
           
     case c: Call =>
-      List(Call(optimize(c.call)))
+      List(Call(optimize(c.call)) at c)
 
     case a: Assign =>
-      List(Assign(optimize(a.left), optimize(a.right)))
+      List(Assign(optimize(a.left), optimize(a.right)) at a)
 
-    case r@Return(Some(expr),o) =>
-      List(Return(Some(optimize(expr)),o))
+    case r@Return(Some(expr)) =>
+      List(Return(Some(optimize(expr))) at r)
 
     case statement => List(statement)
   }     
 
-  /** Extractor for unary `-`. Optimizes the operand. */
-  private object Minus {
-    def apply(expr: Expression): Expression = Unary("-", expr, expr.typed)
+  /** Extractor for unary expressions. Optimizes the operand. */
+  private abstract class UnaryExtractor(op: String) {
+    def apply(expr: Expression): Expression = Unary(op, expr, expr.typed)
     def unapply(expr: Expression): Option[Expression] = expr match {
-      case Unary("-", x, _) => Some(optimize(x))
+      case Unary(`op`, x, _) => Some(optimize(x))
       case _ => None
     }
   }    
   
-  /** Extractor for unary `NOT`. Optimizes the operand. */
-  private object Not {
-    def apply(expr: Expression): Expression = Unary("-", expr, expr.typed)
-    def unapply(expr: Expression): Option[Expression] = expr match {
-      case Unary("-", x, _) => Some(optimize(x))
-      case _ => None
-    }
-  }      
-  
-  /** Extractor for binary `-` expressions. optimizes the operands */
-  private object - {    
-    def unapply(expr: Expression): Option[(Expression,Expression)] = expr match {      
-      case Binary("-", x, y, _ ) => Some(optimize(x),optimize(y))
+  /** Extractor for binary expressions. Optimizes the operand. */
+  private abstract class BinaryExtractor(op: String) {
+    def unapply(expr: Expression): Option[(Expression,Expression)] = expr match {
+      case Binary(`op`,x,y,_) => Some(optimize(x),optimize(y))
       case _ => None
     }
   }
   
-  /** Extractor for binary `+` expressions. optimizes the operands */
-  private object + {    
-    def unapply(expr: Expression): Option[(Expression,Expression)] = expr match {
-      case Binary("+", x, y, _ ) => Some(x,y)
-      case _ => None
-    }
-  }
+  private object Minus extends UnaryExtractor("-")
+  private object Not extends UnaryExtractor("NOT")  
   
-  /** Extractor for binary `*` expressions. optimizes the operands */
-  private object * {    
-    def unapply(expr: Expression): Option[(Expression,Expression)] = expr match {
-      case Binary("*", x, y, _ ) => Some(x,y)
-      case _ => None
-    }
-  }  
-  
-  /** Extractor for binary `/` expressions. optimizes the operands */
-  private object / {    
-    def unapply(expr: Expression): Option[(Expression,Expression)] = expr match {
-      case Binary("/", x, y, _ ) => Some(x,y)
-      case _ => None
-    }
-  }  
-  
-  /** Extractor for binary `AND` expressions. optimizes the operands */
-  private object ∧ {    
-    def unapply(expr: Expression): Option[(Expression,Expression)] = expr match {
-      case Binary("AND", x, y, _ ) => Some(x,y)
-      case _ => None
-    }
-  }  
-  
-  /** Extractor for binary `OR` expressions. optimizes the operands */
-  private object ∨ {    
-    def unapply(expr: Expression): Option[(Expression,Expression)] = expr match {
-      case Binary("OR", x, y, _ ) => Some(x,y)
-      case _ => None
-    }
-  }  
+  private object - extends BinaryExtractor("-")  
+  private object + extends BinaryExtractor("+")
+  private object * extends BinaryExtractor("*")
+  private object / extends BinaryExtractor("/")
+  private object ∧ extends BinaryExtractor("AND")  
+  private object ∨ extends BinaryExtractor("OR")
 }

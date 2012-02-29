@@ -24,6 +24,7 @@ object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
     val showContext = flag("c", "Show results of context analysis")    
     val showVMTs = flag("v", "Show virtual method tables")  
     val showOpt = flag("o", "Show results of optimization")
+    val debugMode = flag("d", "Compile debug messages into output")
     val heapSize = namedArgument[Int]("hs", "Set heap size to %s (default is 100)") match {
       case Success(x,_)  => x
       case _ => 100
@@ -43,7 +44,7 @@ object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
     val targetFile = argument[String]("target", "the target file", optional = true) match {
       case Success(x, _) => Some(x)
       case x => None
-    }
+    }    
     val target = targetFile.map(x => () => new PrintWriter(new File(x)))
                            .getOrElse(() => new PrintWriter(new OutputStreamWriter(System.out, "UTF-8")))
   }
@@ -122,15 +123,15 @@ object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
   // -------------------------------------------------------------------------------------------------------------------
   //  Code generation
   // -------------------------------------------------------------------------------------------------------------------
-
-  synthesis.Code.generate(optimized._2)(optimized._1) 
+  
+  val code = synthesis.generate(optimized._2)(optimized._1).run
   
   // -------------------------------------------------------------------------------------------------------------------
   //  Output
   // -------------------------------------------------------------------------------------------------------------------
   
   private val t = arguments.target()
-  synthesis.Code.instructions.foreach(t.println)
+  code foreach (t.println)
   t.flush()
   
   println("[success] total time: " + ((System.nanoTime - t0) / 1000000) + " ms")  
