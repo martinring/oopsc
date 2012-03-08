@@ -1,12 +1,14 @@
 package de.martinring
 
-import de.martinring.oopsc.syntactic.Declaration
+import de.martinring.oopsc.output._
 import java.io.File
 import scala.util.parsing.input.Position
 import scala.util.parsing.input.Positional
 
+
 /**
- * Global implicits for convenience
+ * The OOPS compiler is for compiling OOPS programs into OOPSVM assembler 
+ * instructions.
  */
 package object oopsc {
 

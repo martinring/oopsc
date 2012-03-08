@@ -134,8 +134,11 @@ case class Assign(left: Expression, right: Expression) extends Statement
  * result if the method has a result type other than void. Otherwise the value
  * must be none.
  */
-case class Return(value: Option[Expression] = None) extends Statement {
+case class Return(value: Option[Expression] = None, offset: Int = 0) extends Statement {  
   override def returns = true
+}
+object Return {
+  def apply(value: Expression): Return = Return(Some(value))
 }
 
 trait Expression extends Element {
@@ -150,6 +153,8 @@ trait Expression extends Element {
   def * (that: Expression) = Binary("*", this, that, typed)
   /** Creates a Binary Expression dividing this by 'that' */
   def / (that: Expression) = Binary("/", this, that, typed)
+  /** Creates a Binary Expression == */
+  def === (that: Expression) = Binary("=", this, that, Class.boolType.name)
   /** Creates a unary expression negating this integer */
   def unary_- = Unary("-", this, typed)
   /** Creates a unary expression negating this boolean */
@@ -162,7 +167,7 @@ case class Unary(operator: String,
                  operand:  Expression,
                  typed:    Name = Unknown) extends Expression
 
-/** A Binary expression opearates on to operands. It can be one of +,-,*,/,MOD,
+/** A Binary expression operates on to operands. It can be one of +,-,*,/,MOD,
   * AND,OR */
 case class Binary(operator: String,
                   left:     Expression,
@@ -194,13 +199,19 @@ case class VarOrCall(name:       Name,
 /** A name identifies classes, methods, attributes and variables */
 trait Name extends Positional {
   val relative: String
-  def label: String = ".error"
-  implicit def string2Absolute(s: String) = AbsoluteName(List(s))
+  def label: String = ".error"  
+  def / (n: String): AbsoluteName  
+  def / (other: Name): AbsoluteName = this / other.relative
+}
+
+object Name {
+  implicit def string2Name(s: String): Name = RelativeName(s)  
 }
 
 /** Relative names are not yet resolved to their full path */
 case class RelativeName(relative: String) extends Name {
   override def toString = relative
+  def / (n: String) = sys.error("absolute operation on relative name")
 }
 
 /** Represents an unknown identifier */
@@ -211,14 +222,15 @@ object Unknown extends RelativeName("<unknown>")
 //  Structures for context analysis
 // -------------------------------------------------------------------------------------------------------------------
 
-object Root {
+object Root extends Name {
+  val relative = "<root>"  
   def / (n: String) = AbsoluteName(List(n))
 }
 
 /** An absolute name identifies an object */
 case class AbsoluteName(path:      List[String],
                         displayAs: Option[String] = None) extends Name {
-
+  
   val relative = path.last
 
   override def toString = displayAs match {
@@ -236,7 +248,6 @@ case class AbsoluteName(path:      List[String],
   def displayAs(s: String) = AbsoluteName(path, Some(s))
 
   def / (other: String) = AbsoluteName(path :+ other)
-  def / (other: Name)   = AbsoluteName(path :+ other.relative)
 }
 
 
@@ -252,9 +263,9 @@ case class DeRef(expr:  Expression,
                   typed: Name) extends Expression
 
 object Literal {
-  val True  = Literal(1, Class.boolType.name)
-  val False = Literal(0, Class.boolType.name)
-  val Null  = Literal(0, Class.nullType.name)
+  val TRUE  = Literal(1, Class.boolType.name)
+  val FALSE = Literal(0, Class.boolType.name)
+  val NULL  = Literal(0, Class.nullType.name)
   object Int {
     def apply(int: Int): Literal = Literal(int, Class.intType.name)
     def unapply(expr: Expression): Option[Int] = expr match {
@@ -265,27 +276,30 @@ object Literal {
 }
 
 object Class {
+  import Name._
+  
   val headerSize = 1
-
+  
   val intType = Class(Root / "<int>" displayAs "Integer")
   val boolType = Class(Root / "<bool>" displayAs "Boolean")
-  val voidType = Class(Root / "<void>" displayAs "Void")
-  val nullType = Class(Root / "<null>" displayAs "Null")
-  val objectClass = Class(Root / "Object")
-  val intClass = new Class(Root / "Integer", Nil, Nil, Some(Root / "Object")) {
-    override val size = 1 + headerSize
-  }
-  val boolClass = new Class(Root / "Boolean", Nil, Nil, Some(Root / "Object")) {
-    override val size = 1 + headerSize
-  }
+  val voidType = Class(Root / "<void>" displayAs "void")
+  val nullType = Class(Root / "<null>" displayAs "Object")
+  
+  val objectClass = Class(Root / "Object", List(Variable("_cloned", nullType.name, None, true)), Nil)
 
-  val predefinedClasses = List(boolClass,intClass,objectClass)
+  val intClass = Class(Root / "Integer",  List(Variable("_value", nullType.name, None, true)), Nil, Some("Object"))
+  
+  val boolClass = Class(Root / "Boolean", List(Variable("_value", nullType.name, None, true)), Nil, Some("Object"))
 
-  val predefined = List(boolClass, intClass, objectClass, intType, boolType, voidType, nullType)
+  implicit def className(c: Class): Name = c.name
+  
+  val predefinedClasses = List(objectClass,boolClass,intClass)
 
-  val box: Map[Class, Class] = Map(intType -> intClass,
-                                    boolType -> boolClass)
+  val predefined = predefinedClasses ++ List(intType, boolType, voidType, nullType)
 
-  val unBox: Map[Class, Class] = Map(intClass -> intType,
-                                      boolClass -> boolType)
+  val box: Map[Name, Name] = Map(intType.name -> intClass.name,
+                                 boolType.name -> boolClass.name)
+
+  val unBox: Map[Name, Name] = Map(intClass.name -> intType.name,
+                                   boolClass.name -> boolType.name)
 }

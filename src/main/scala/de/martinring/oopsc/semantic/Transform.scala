@@ -11,11 +11,11 @@ import de.martinring.util.Failable._
  * in the declaration tree, name aliases and virtual method tables.
  * @author Martin Ring
  */
-case class Context(path:         List[String] = Nil,
-                   aliases:      Map[List[String], List[String]] = Map.empty,
+case class Context(path:         List[String] = Nil,                   
                    declarations: Map[List[String], Declaration] = Map.empty,
+                   subscopes:    Map[List[String], List[String]] = Map.empty,
                    vmts:         Map[Name, List[AbsoluteName]] = Map.empty) {
-  def get(n: AbsoluteName): Declaration = declarations.get(n.path).getOrElse(declarations(aliases(n.path)))
+  def get(n: Name): Declaration = declarations(n.asInstanceOf[AbsoluteName].path)
   def getVMT(n: Name): List[AbsoluteName] = vmts.getOrElse(n.asInstanceOf[AbsoluteName],Nil)
 }
 
@@ -84,11 +84,10 @@ object Transform {
 
   /** returns a resolved identifier pointing to the current type */
   val currentClass = transform[AbsoluteName] { c =>
-      Success((c, c.path.prefixes.reverse.collectFirst {
-        case prefix if c.declarations.isDefinedAt(prefix) && c.declarations(prefix).isInstanceOf[Class] =>
-          new AbsoluteName(prefix)
-      }.getOrElse(new AbsoluteName(List("_init")))))
-    }
+    Iterator.iterate(Some(c.path) : Option[List[String]])(_ flatMap c.subscopes.get).takeWhile(_.isDefined).collectFirst{
+      case Some(p) if c.declarations.get(p).map(_.isInstanceOf[Class]) getOrElse false => Success((c,AbsoluteName(p)))
+    } getOrElse Success((c, sys.error("not in a class")))
+  }
 
   /** returns a resolved identifier pointing to the current method */
   val currentMethod = transform[Option[AbsoluteName]] { c =>
@@ -99,16 +98,20 @@ object Transform {
   }
 
   /** returns the current path */
-  val path =
-    transform( c => Success((c, c.path)) )
+  val path = transform( c => Success((c, c.path)) )
 
   /** Enter a relative scope */
   def enter[A](name: String)(f: Transform[A]): Transform[A] = for {
-    p <- transform { c => Success((c.copy(path = c.path :+ name), c.path)) }
+    p <- transform { c => Success( ( c.copy(path = c.path :+ name), (c.path,c.path :+ name) ) ) }
+    _ <- subscope(p._2 -> p._1)
     x <- f
-    _ <- transform { c => Success((c.copy(path=p), ())) }
+    _ <- transform { c => Success((c.copy(path=p._1), ())) }
   } yield x
-
+  
+  def subscope(relation: (List[String], List[String])) = transform { c =>
+    Success((c.copy(subscopes = c.subscopes + relation),()))
+  }
+  
   /** Enter an absolute scope */
   def enter[A](id: Name)(f: Transform[A]): Transform[A] = id match {
     case r: AbsoluteName => for {
@@ -116,18 +119,7 @@ object Transform {
       x <- f
       _ <- transform { c=> Success((c.copy(path=p), ())) }
     } yield x
-    case _ => sys.error("unresolved identifier")
-  }
-
-  /** Create an alias for a declaration in the current scope. (i.e. to point to
-    * methods of the parent class) */
-  def createAlias(decl: Declaration): Transform[Unit] = transform { c =>
-    val p = c.path :+ decl.name.relative
-    decl.name match {
-      case AbsoluteName(path,_) => Success((c.copy(aliases = c.aliases.updated(p,path)),()))
-      case _ => sys.error("Should not happen")
-    }
-    
+    case _ => sys.error("unresolved identifier " + id)
   }
     
   /** Bind the declaration in the current scope. If the relative Name exists allready an
@@ -146,8 +138,8 @@ object Transform {
   def bind(decls: List[Declaration]): Transform[List[AbsoluteName]] =
     sequence(decls map bind)
 
-  /** Update an existing binding of the supplied declaration */
-  def update[T <: Declaration](decl: T): Transform[T] = transform { c =>    
+  /** Update the declaration of an existing binding */
+  def update[T <: Declaration](decl: T) = transform { c =>    
     val p = decl.name match {
       case r: AbsoluteName => r.path
       case _ => sys.error("unresolved identifier " + decl.name)
@@ -157,13 +149,11 @@ object Transform {
 
   /** Resolve a name and return an absolute identifier. Throws errors if the name
    * is not in scope */
-  def resolve(name: Name) = transform[AbsoluteName]{ c =>
-    c.path.prefixes.toList.reverse.collectFirst {
-      case prefix if c.declarations.isDefinedAt(prefix :+ name.relative) =>
-        (c, new AbsoluteName(prefix :+ name.relative) at name) 
-      case prefix if c.aliases.isDefinedAt(prefix :+ name.relative) =>
-        (c, new AbsoluteName(prefix :+ name.relative) at name) 
-    } orFail (Error(name.pos, name.relative + " is not in scope"))
+  def resolve(name: Name) = transform{ c =>
+    Iterator.iterate(Some(c.path) : Option[List[String]])(_ flatMap c.subscopes.get).takeWhile(_.isDefined) collectFirst {
+      case Some(p) if c.declarations.isDefinedAt(p :+ name.relative) =>
+        (c, new AbsoluteName(p :+ name.relative) at name)        
+    } orFail (Error(name.pos, name.relative + " is not in scope"))    
   }
 
   /** Resolve a class name */
@@ -175,11 +165,8 @@ object Transform {
   /** Get the current declaration which is bound to the name */          
   def get(name: Name) = transform[Declaration]{ c =>    
     name match {
-      case i: AbsoluteName => c.declarations.get(i.path) match {
-          case None => c.aliases.get(i.path) match {
-              case None => fail(Error(i.pos, "not found: " + i.path.mkString(".")))
-              case Some(a) => Success((c,c.declarations(a)))
-          }
+      case i: AbsoluteName => c.declarations.get(i.path) match {          
+          case None => fail(Error(i.pos, "not found: " + i.path.mkString(".")))          
           case Some(d) => Success((c, d))
         }
       case _ => Failure(List()) // this is a recursive error that does not need to

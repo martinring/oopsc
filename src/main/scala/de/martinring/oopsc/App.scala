@@ -131,7 +131,8 @@ object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
   // -------------------------------------------------------------------------------------------------------------------
   
   private val t = arguments.target()
-  code foreach (t.println)
+  code foreach (t.println)    
+  
   t.flush()
   
   println("[success] total time: " + ((System.nanoTime - t0) / 1000000) + " ms")  

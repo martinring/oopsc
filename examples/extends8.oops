@@ -1,6 +1,6 @@
 CLASS Main IS
   METHOD main IS
   BEGIN
-    BASE := NEW Object; | Fehler: Auch BASE muss mindestens Main sein
+    BASE := NEW Objekt; | Fehler: Auch BASE muss mindestens Main sein
   END METHOD
 END CLASS

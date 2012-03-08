@@ -26,7 +26,10 @@ object Optimization {
   
   private def optimizeUnary(e: Unary): Expression = e match {
     case Minus(Minus(x)) => x
+    case Minus(Int(x)) => Int(-x)
     case Not(Not(x)) => x
+    case Not(TRUE) => FALSE
+    case Not(FALSE) => TRUE
     case x => x
   }
    
@@ -66,14 +69,14 @@ object Optimization {
       case x => x      
     }
     case "AND" | "OR" => e match {
-      case False ∧ x => False
-      case x ∧ False => False
-      case True ∧ x => x
-      case x ∧ True => x
-      case False ∨ x => x
-      case x ∨ False => x
-      case True ∨ x => True
-      case x ∨ True => True
+      case FALSE AND x => FALSE
+      case x AND FALSE => FALSE
+      case TRUE AND x => x
+      case x AND TRUE => x
+      case FALSE OR x => x
+      case x OR FALSE => x
+      case TRUE OR x => TRUE
+      case x OR TRUE => TRUE
       case x => x
     }
     case _ => e
@@ -117,8 +120,8 @@ object Optimization {
     case w: While =>
       lazy val body = (w.body map optimize).flatten
       optimize(w.condition) match {
-        case Literal.False => Nil // while false => _
-        case Literal.True  => List(Forever(body))
+        case FALSE => Nil // while false => _
+        case TRUE  => List(Forever(body))
         case cond => List(While(cond, body) at w)
       }
 
@@ -126,8 +129,8 @@ object Optimization {
       lazy val body = (i.body map optimize).flatten
       lazy val elseBody = (i.elseBody map optimize).flatten
       optimize(i.condition) match {
-        case Literal.True  => body // if true then else => then
-        case Literal.False => elseBody // if false then else => else
+        case TRUE  => body // if true then else => then
+        case FALSE => elseBody // if false then else => else
         case cond => List(If(cond, body, elseBody) at i)
     }
           
@@ -137,8 +140,8 @@ object Optimization {
     case a: Assign =>
       List(Assign(optimize(a.left), optimize(a.right)) at a)
 
-    case r@Return(Some(expr)) =>
-      List(Return(Some(optimize(expr))) at r)
+    case r@Return(Some(expr),o) =>
+      List(Return(Some(optimize(expr)),o) at r)
 
     case statement => List(statement)
   }     
@@ -167,6 +170,6 @@ object Optimization {
   private object + extends BinaryExtractor("+")
   private object * extends BinaryExtractor("*")
   private object / extends BinaryExtractor("/")
-  private object ∧ extends BinaryExtractor("AND")  
-  private object ∨ extends BinaryExtractor("OR")
+  private object AND extends BinaryExtractor("AND")  
+  private object OR extends BinaryExtractor("OR")
 }

@@ -5,7 +5,7 @@ import scala.collection.immutable.SortedSet
 sealed trait Code[+T] {
   import Code._
   def apply(s: AssemblerState): (T,AssemblerState)
-  def map[U](f: T => U): Code[U] = code { 
+  def map[U](f: T => U): Code[U] = code {
     case s =>
       val (t,s2) = apply(s)
       (f(t),s2)
@@ -16,8 +16,9 @@ sealed trait Code[+T] {
       f(t)(s2)
   }
   def >>=[T] = flatMap[T] _
-  def >>[T] (f: Code[T]): Code[T] = flatMap(_ => f)  
-  def run: List[Line] = apply(AssemblerState.initial)._2.instructions
+  def >>[T] (f: Code[T]): Code[T] = flatMap(_ => f)
+  
+  lazy val run: List[Line] = apply(AssemblerState.initial)._2.instructions :+ end
 }
 
 object Code {
@@ -25,8 +26,13 @@ object Code {
     def apply(s: AssemblerState) = f(s)
   } 
   
-  implicit def instruction(line: Line): Code[Unit] = code( s => ((),s.copy(instructions = s.instructions :+ line)) )
-   
+  val end = Label("_end")
+  
+  def exit: Code[Unit] = R0 := end
+  
+  implicit def instruction(line: Line): Code[Unit] = code( s => ((),s.copy(instructions = s.instructions :+ line)) )   
+  
+  def comment(s: String) = instruction(Comment(s))
   
   def variable: Code[R] = code( s => (s.registers.head,s.copy(registers = s.registers.tail)) )
   
@@ -55,12 +61,14 @@ object Code {
     def assignTo(r: R): Code[Unit] = f(r)
   }
   
+  def debugInfo(s: String): Code[Unit] = if (de.martinring.oopsc.App.arguments.debugMode) sequence(for (c <- (s+"\n").toList) yield write(c.toInt)) else just(())
+  
   def sequence(stuff: List[Code[Unit]]): Code[Unit] = stuff.foldLeft[Code[Unit]](just(())){ case (a,b) => (a >> b): Code[Unit] }  
   
   def lines(lines: Code[Unit]*): Code[Unit] = sequence(lines.toList)
   
-  def when (cond: Value) = new { 
-    def goto (target: Literal) = cond.use(c => JPC(c,target))
+  def when (cond: Value) = new {
+    def goto (target: Literal) = cond.use(c => JPC(c,target))       
   }
     
   implicit def intLiteral(v: Int): Literal = IntLiteral(v)
@@ -114,7 +122,7 @@ sealed trait Value {
   def unary_- = result(r => variable(t => (r := 0) >> assignTo(t) >> (r -= t)))
 }
 
-sealed trait LValue extends Value {
+trait LValue extends Value {
   def :=(v: Value): Code[Unit]
   def +=(v: Value) = this := this + v
   def -=(v: Value) = this := this - v
@@ -140,7 +148,15 @@ sealed abstract class R(val n: Int) extends LValue {
   }
 }
 
-object R0 extends R(0)
+object R0 extends R(0) {  
+  override def := (that: Value) = that match {
+    case r: R => MRR(this,r)
+    case a: Address => MRM(this,a)
+    // R0 is special because the value can only be assigned once so we need a 
+    // temporary value here
+    case x => variable( temp => (that assignTo temp) >> (MRR(this,temp) ) )
+  }
+}
 object R1 extends R(1)
 object R2 extends R(2)
 object R3 extends R(3)
@@ -164,15 +180,10 @@ object AssemblerState {
     Map.empty)
 }
 
-sealed trait Line {
-  private var comment: Option[String] = None
-  
-  def apply(s: String): Line = {
-    comment = Some(s)
-    return this
-  }
-  
-  override def toString = super.toString + comment.map("; " + _).getOrElse("")                          
+sealed trait Line
+
+case class Comment(v: String) extends Line {
+  override def toString = "; " + v
 }
 
 case class Label(v: String) extends Line {
@@ -213,31 +224,6 @@ case class JPC (Rx: R, n: Literal) extends Instruction("JPC",Rx,n)
 case class SYS (f: Literal, n: Literal) extends Instruction("SYS",f,n)
 case class DAT (l: Int, n: Literal) extends Instruction("DAT",l,n)
 
-case class Stack(name: String, size: Int) {
-  val start: Label = Label(name)
-  
-  val position: Code[R] = variable(name)  
-  
-  val initialize: Code[Unit] = position >>= (r => r := start)
-  val allocate: Code[Unit] = start >> DAT(size, 0)
-  
-  def push(r: Value): Code[Unit] = (position += 1) >> (~position := r)
-  def pop: Value = result ( r => (r := ~position) >> (position -= 1) )
-  
-  def top: LValue = new LValue {
-    def assignTo(r: R) = r := ~position
-    def :=(v: Value) = ~position := v
-  }
-}
-
-case class Heap(name: String, size: Int) {
-  val start: Label = Label(name)  
-  
-  val position = MemoryVar(name + "_pointer")    
-  
-  val allocate: Code[Unit] = position.allocate(start) >> start >> DAT(size, 0)    
-}
-
 case class MemoryVar(name: String) extends LValue {
   val position: Label = Label(name)  
   
@@ -247,5 +233,5 @@ case class MemoryVar(name: String) extends LValue {
   def :=(v: Value) = (~position := v)
   override def use(f: R => Code[Unit]) = variable ( p => (p := ~position) >> f(p) )
   
-  def modify(f: R => Code[Unit]) = variable( p => (p := position) >> variable( x => (x := ~p) >> f(p) >> (~p := x) ) )
+  def modify(f: R => Code[Unit]) = variable( p => (p := position) >> variable( x => (x := ~p) >> f(x) >> (~p := x) ) )
 }

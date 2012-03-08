@@ -95,12 +95,11 @@ object Output {
     case a@Assign(left, right) =>
       pos(a) + "ASSIGN" + indent(left, right)
 
-    case r@Return(expr) =>
+    case r@Return(expr,_) =>
       pos(r) + "RETURN" + (expr match {
         case Some(e) => indent(e)
         case _       => ""
       })
-
 
     case u@Unary(op, operand, t) =>
       pos(u) + op + typed(t) + indent(operand)

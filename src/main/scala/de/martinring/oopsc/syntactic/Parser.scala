@@ -113,9 +113,9 @@ object Parser extends TokenParsers {
   
   def literal: Parser[Expression] = positioned (
       number                                              ^^ { Literal.Int(_) }
-    | FALSE                                               ^^^{ Literal.False }
-    | TRUE                                                ^^^{ Literal.True }
-    | NULL                                                ^^^{ Literal.Null }
+    | FALSE                                               ^^^{ Literal(0, Class.boolType.name) }
+    | TRUE                                                ^^^{ Literal(1, Class.boolType.name) }
+    | NULL                                                ^^^{ Literal(0, Class.nullType.name) }
     | SELF                                                ^^^{ VarOrCall(new RelativeName("SELF")) }
     | BASE                                                ^^^{ VarOrCall(new RelativeName("BASE")) }
     | NEW ~> name                                         ^^ { x => New(x) at x }
