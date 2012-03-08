@@ -1,0 +1,11 @@
+CLASS Main IS   
+  a: Integer;     
+  METHOD main IS
+    a: Integer;     
+  BEGIN    
+    WHILE TRUE DO
+      a := 65;
+      WRITE a;
+    END WHILE
+  END METHOD
+END CLASS
