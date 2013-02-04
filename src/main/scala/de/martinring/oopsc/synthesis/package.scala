@@ -255,14 +255,14 @@ package object synthesis {
     def resources = 
       string("_outOfMemory"," *** runtime error: out of memory ***") >>
       string("_nullPointer"," *** runtime error: null pointer ***") >>
-      string("_divBy0"," *** runtime error: division by zero ***") >>
+      string("_divBy0",     " *** runtime error: division by zero ***") >>
       label >> (R6 := ~R7) >> (when (R6) goto print) >>
       exit >> print >> write(R6) >> (R7 += 1) >>
       goto(label)
     
     def outOfMemory = (R7 := Label("_outOfMemory")) >> goto(label)
     def nullPointer = (R7 := Label("_nullPointer")) >> goto(label)
-    def divByZero = (R7 := Label("_divBy0")) >> goto(label)
+    def divByZero   = (R7 := Label("_divBy0"))      >> goto(label)
   }    
   
   private var counter: Int = 0

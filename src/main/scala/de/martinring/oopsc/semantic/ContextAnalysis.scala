@@ -6,8 +6,9 @@ import de.martinring.oopsc.syntactic.Class._
 import de.martinring.oopsc.semantic.Transform._
 import de.martinring.oopsc.syntactic.Name._
 import de.martinring.oopsc.output._
-import de.martinring.util.Failable.pimpOption
+import de.martinring.util.Failable._
 import scala.concurrent.promise
+import javax.lang.model.`type`.NullType
 
 /**
  * Object for the contextual analysis. Utilizes the [[de.martinring.oopsc.Transform]] monad.
@@ -28,12 +29,15 @@ object ContextAnalysis {
     _       <- bind(predefined) >> bind(p.classes)    
     classes <- sequence((p.classes ++ predefinedClasses) map (c => (signature(c.name))))
     classes <- sequence(classes map (c => enter(c.name)(analyse(c))))
-    main    <- getType(Root / "Main") ! ("missing main class" at p)
-    entry   <- getMethod(Root / "Main" / "main") ! ("missing main method" at main)
+    main    <- getType(Root / "Main") ! ("No Main class defined " at p)
+    entry   <- getMethod(Root / "Main" / "main") ! ("Main class has not method main" at main)
     _       <- throwIf(!entry.parameters.isEmpty)("main method must not take parameters" at entry.parameters.head) >>
-               throwIf(entry.typed != voidType.name)("main method must be of void type" at entry.typed)
+               throwIf(entry.typed != voidType.name)("main method must be of type void" at entry.typed)
   } yield Program(classes) at p
   
+  /**
+   * generates a clone method for a specific class
+   */
   def generateClone(c: Class): Method = Method("_clone", Nil, 
     List(Variable("cloned",c.name,None,false)), List(
       If(VarOrCall("_cloned") === Literal.NULL,
@@ -46,13 +50,15 @@ object ContextAnalysis {
          Nil), Return(VarOrCall("_cloned"))), nullType.name)
   
   /**
-   * Binds the signature of a class and it's methods. This checks if there is no 
-   * cyclic inheritance involving this class and the signatures of the overridden
-   * methods match. 
+   * Binds the signature of a class and it's methods. This checks if
+   * 
+   *  - there is no cyclic inheritance involving this class and 
+   *  - if the signatures of the overridden methods match.
+   *  - variable or method names are unique
+   *  
    * Also imports the virtual method table of the base class and creates aliases 
    * for methods and attributes of the base class. Determines the size of the 
-   * class.
-   * Fails if variable or method names are used more than once.
+   * class. 
    */
   def signature(c: Name, actual: Class = null): Transform[Class] = 
     resolve(c) >>= (n => getType(n) >>= (c =>  if (c.visited) just(c) else for {
@@ -90,7 +96,7 @@ object ContextAnalysis {
   /**
    * Binds the signature of a method. And checks if the method is allready existent
    * in the vmt of the current class. If that is the case the method must satisfy
-   * the following:
+   * the following conditions:
    * 
    *  - it must not narrow the visibility of the overridden method
    *  - it must not have a different return type than the overriden method   
@@ -275,8 +281,12 @@ object ContextAnalysis {
         right <- analyse(b.right) >>= unBox >>= requireType(boolType)
       } yield new Binary(b.operator, left, right, boolType.name) at b
 
-      case "=" | "#" => for {
-        left  <- analyse(b.left) >>= unBox        
+      case "=" | "#" => if (b.right == Literal.NULL) for {
+        left  <- analyse(b.left) >>= requireType(nullType)       
+        right <- analyse(b.right)
+      } yield new Binary(b.operator, left, right, boolType.name) at b
+      else for {
+        left  <- analyse(b.left) >>= unBox
         isObj <- getType(left.typed) >>= (t => t isA Class.objectClass)
         pOp    = b.operator match { case "=" => "=="; case "#" => "!=" }
         right <- analyse(b.right) >>= unBox >>= requireType(left.typed)

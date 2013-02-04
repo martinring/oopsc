@@ -90,7 +90,7 @@ object Optimization {
   } yield Program(classes) at p
 
   /**
-   * optimizes all methods of a class and updates the binding
+   * optimizes all methods of a class and updates the binding for the class
    */
   def optimize(c: Class): Transform[Class] = for {
     methods    <- sequence(c.methods map optimize)
@@ -98,7 +98,7 @@ object Optimization {
   } yield result
 
   /**
-   * optimizes all statements of a method and updates the binding
+   * optimizes all statements of a method and updates the binding for the method
    */
   def optimize(m: Method): Transform[Method] = for {
     result     <- update(m.copy(body = (m.body map optimize) flatten) at m)

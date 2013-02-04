@@ -16,6 +16,9 @@ abstract class Message(pos: Position, msg: String, prefix: String = "") {
     case (0,0) => "%s: %s".format(prefix,msg)
     case (l,c) => "[%d.%d] %s: %s\n%s".format(l, c, prefix, msg, pos.longString)
   }
+  def message = msg
+  def internal = (pos.line,pos.column) == (0,0)
+  def isError = false
 }
 
 /** Info message */
@@ -23,4 +26,6 @@ case class Info(pos: Position, msg: String) extends Message(pos, msg, "info")
 /** Warning */
 case class Warn(pos: Position, msg: String) extends Message(pos, msg, "warn")
 /** Error Message */
-case class Error(pos: Position, msg: String) extends Message(pos, msg, "error")
+case class Error(pos: Position, msg: String) extends Message(pos, msg, "error") {
+  override def isError = true
+}

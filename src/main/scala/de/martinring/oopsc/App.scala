@@ -25,20 +25,20 @@ object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
     val showVMTs = flag("v", "Show virtual method tables")  
     val showOpt = flag("o", "Show results of optimization")
     val debugMode = flag("d", "Compile debug messages into output")
-    val heapSize = namedArgument[Int]("hs", "Set heap size to %s (default is 100)") match {
+    val heapSize = namedArgument[Int]("hs", "Set heap size to %s (default is 400)") match {
       case Success(x,_)  => x
-      case _ => 100
+      case _ => 10000
     }
-    val stackSize = namedArgument[Int]("ss", "Set stack size to %s (default is 50)") match {
+    val stackSize = namedArgument[Int]("ss", "Set stack size to %s (default is 200)") match {
       case Success(x, _) => x
-      case _ => 50
+      case _ => 10000
     }
     val sourceFile = argument[File]("source", "the source file", optional = false) match {
       case Success(x, _) => x
       case x =>
         print("[failure] Source File: ")
         x.messages.foreach(println(_))
-        exit
+        sys.exit
     }
     val source = Source.fromFile(sourceFile, "UTF-8").mkString
     val targetFile = argument[String]("target", "the target file", optional = true) match {
@@ -59,7 +59,7 @@ object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
   //  Lexical analysis
   // -------------------------------------------------------------------------------------------------------------------
   
-  private val tokens = new lexical.Scanner.Scanner(arguments.source)
+  private val tokens = lexical.Scanner(arguments.source)
   if (arguments.showSymbols) {
     section("Results of the Lexical Analysis")
     Output(tokens)
@@ -70,7 +70,7 @@ object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
   // -------------------------------------------------------------------------------------------------------------------
 
   private val p: Program = syntactic.Parser.program(tokens) match {
-    case s: syntactic.Parser.Success[Program] => s.result
+    case s: syntactic.Parser.Success[_] => s.result
     case f => println(f); sys.exit()
   }
   if (arguments.showSyntax) {
@@ -124,7 +124,7 @@ object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
   //  Code generation
   // -------------------------------------------------------------------------------------------------------------------
   
-  val code = synthesis.generate(optimized._2)(optimized._1).run
+  val code = synthesis.generate(optimized._2)(optimized._1).run  
   
   // -------------------------------------------------------------------------------------------------------------------
   //  Output

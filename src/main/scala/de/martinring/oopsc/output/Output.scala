@@ -18,7 +18,7 @@ object Output {
    */
   def apply(scanner: Scanner) {
     def p(scanner: Scanner) {
-      if (scanner.first != EOF) {
+      if (!scanner.atEnd) {
         printf(" %-5s| %-5s| %s\n", scanner.pos.line, scanner.pos.column, scanner.first)
         p(scanner.rest)
       }

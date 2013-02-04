@@ -42,7 +42,7 @@ trait Transform[A] {
   /** Short operator for [[flatMap]] */
   def >>=[B](f: A => Transform[B]): Transform[B] = flatMap(f)
 
-  /** >>= _ -> */
+  /** Short for >>= _ => */
   def >>[B](f: => Transform[B]): Transform[B] = flatMap(_ => f)
 
   /** If errors were thrown, try an alternative transform.
@@ -128,7 +128,7 @@ object Transform {
     val p = c.path :+ decl.name.relative
     c.declarations.get(p) match {
       case None    => Success( (c.copy(declarations = c.declarations.updated(p,decl)), new AbsoluteName(p)) )
-      case Some(x: Declaration) => Failable.fail(Error(decl.pos,
+      case Some(x: Declaration) => new Failure(Error(decl.pos,
           if (Class.predefined.exists(_.name.relative == decl.name.relative)) decl.name + " is already defined" 
           else decl.name + " is already defined at " + x.pos))
     }
@@ -147,7 +147,7 @@ object Transform {
     Success( (c.copy(declarations = c.declarations.updated(p,decl)), decl) )
   }
 
-  /** Resolve a name and return an absolute identifier. Throws errors if the name
+  /** Resolve a name and return an absolute identifier. Chains an error if the name
    * is not in scope */
   def resolve(name: Name) = transform{ c =>
     Iterator.iterate(Some(c.path) : Option[List[String]])(_ flatMap c.subscopes.get).takeWhile(_.isDefined) collectFirst {
@@ -166,7 +166,7 @@ object Transform {
   def get(name: Name) = transform[Declaration]{ c =>    
     name match {
       case i: AbsoluteName => c.declarations.get(i.path) match {          
-          case None => fail(Error(i.pos, "not found: " + i.path.mkString(".")))          
+          case None => new Failure (Error(i.pos, "not found: " + i.path.mkString(".")))          
           case Some(d) => Success((c, d))
         }
       case _ => Failure(List()) // this is a recursive error that does not need to

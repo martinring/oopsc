@@ -74,6 +74,6 @@ trait Tokens extends scala.util.parsing.combinator.token.Tokens {
   /** Represents an identifier */
   case class Identifier(chars: String) extends Token
 
-  /** Represents a comment */
+  /** Represents a comment (could be dropped but is important for front end) */
   case class Comment(chars: String) extends Token
 }

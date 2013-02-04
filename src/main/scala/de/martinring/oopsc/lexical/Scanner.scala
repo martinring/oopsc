@@ -14,7 +14,7 @@ object Scanner extends Scanners with Tokens {
   def apply(c: CharSequence): Scanner = new Scanner(new CharSequenceReader(c))
 
   /** parses a single token */
-  val token: Parser[Token] =
+  def token: Parser[Token] =
     ( keyword
     | identifier ^^ Identifier
     | integer ^^ Number
@@ -22,8 +22,7 @@ object Scanner extends Scanners with Tokens {
     | failure("illegal character"))
 
   /** parses whitespace */
-  val whitespace: Parser[Any] = 
-    (whitespaceChar | comment) *
+  def whitespace: Parser[Any] = (comment | whitespaceChar) *
 
   /** parses a string token and returns an error */
   def string =
@@ -35,26 +34,27 @@ object Scanner extends Scanners with Tokens {
    *  comments can be either single line comments starting with '|' and ending with the end of the 
    *  line or multi line comments starting with '{' and ending with '}'. */
   def comment =
-    ( '{' ~! (allExcept(EofCh, '{')*) ~ '}' ^^ { case _~x~_ => x.mkString }
-    | '|' ~! (allExcept(EofCh, '\n')*)      ^^ { case _~x   => x.mkString } )
+    ( '|' ~! (allExcept(EofCh, '\n')*)
+    | '{' ~! (allExcept(EofCh, '}')*) ~ '}' )
    
-  /** parses an identifier. keyword parser has to be called previously to make sure keywords are
+  /** parses an identifier. keyword parser has to be applied bevore to make sure keywords are
    *  not parsed as identifiers */
   def identifier =
     letter ~ (letter|digit*) ^^ { case c~cs => c::cs mkString }
     
-  /** parses an integer */
+  /** parses an integer or a character, which are treated equal internally */
   def integer = 
     ( (digit+) ^^ (_.mkString.toInt)
-     | '\'' ~> (allExcept(EofCh,'\'') <~ '\'') ^^ (_.toInt) )
+    | '\'' ~> (allExcept(EofCh,'\'') <~ '\'') ^^ (_.toInt) )
     
   /** parses characters A-Z and a-z */
-  def letter = elem("letter", ch => ('a' to 'z' contains ch) || ('A' to 'Z' contains ch))
+  def letter = elem("letter", ch => 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z')
   
   /** parses digits 0-9 */
-  def digit = elem("digit", '0' to '9' contains _)
+  def digit = elem("digit", ch => '0' <= ch && ch <= '9')
   
-  /** parses any character except for the provided ones */
+  /** parses any character except for the specified 
+   * @param cs the characters to fail upon*/  
   def allExcept(cs: Char*) = elem("", ch => (cs forall (ch != _)))
   
   /** parses a single whitespace character */
