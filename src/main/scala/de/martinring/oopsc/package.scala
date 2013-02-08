@@ -18,7 +18,7 @@ package object oopsc {
    * Provides additional functions on [[java.lang.String]].
    */
   implicit class PimpedString(s: String) {
-    /** Decorates a Message with position information and Wraps it in an [[de.martinring.oopsc.Error]] */
+    /** Decorates a Message with position information and Wraps it in an [[de.martinring.util.Error]] */
     def at (p: Positional) = Error(p.pos, s)
 
     /** Repeats the String n times */
@@ -39,8 +39,7 @@ package object oopsc {
 
   implicit class PimpedMessageList(es: List[Message]) {
       def print() {
-        es.filter(!_.internal).foreach ( println(_) )
-        if (es.exists(_.isInstanceOf[Error])) sys.exit
+        es./*filter(!_.internal).*/foreach ( println(_) )
       }
     }
 }

@@ -1,3 +1,4 @@
+| Sollte ABCDEFGHI ausgeben
 CLASS Main IS
   METHOD main IS    
   BEGIN
@@ -23,5 +24,4 @@ CLASS Main IS
     WRITE a;
     RETURN TRUE;
   END METHOD
-  
 END CLASS

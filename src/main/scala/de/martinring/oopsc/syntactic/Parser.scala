@@ -136,7 +136,7 @@ object Parser extends TokenParsers {
   implicit def keyword(k: Keyword): Parser[Keyword with Positional] = 
     positioned( elem(k) ^^^ new Keyword(k.chars) with Positional { } )
         
-    /** Convenience implicit to convert [[String]] literals to Parsers for the
+    /** Convenience implicit to convert [[java.lang.String]] literals to Parsers for the
       corresponding delimiter as defined in [[keywords]] **/
   implicit def delimiter(d: String): Parser[Keyword with Positional] = keyword(keywords.find(_.chars == d).get)
   implicit def delimiter(d: Char):   Parser[Keyword with Positional] = keyword(keywords.find(_.chars == d.toString).get)  

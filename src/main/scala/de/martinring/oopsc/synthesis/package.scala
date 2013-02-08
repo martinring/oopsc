@@ -67,7 +67,12 @@ package object synthesis {
     
     case Call(call) => generate(call)
       
-    case Assign(left, right) => debugInfo("what???")
+    case Assign(left, Literal.NULL) =>
+      generate(left) >> 
+      (~stack.pop("left hand side of assignment (:= NULL)") := 0)
+    
+    
+    case Assign(left, right) =>
       generate(right) >> generate(left) >> 
       (~stack.pop("left hand side of assignment") := objectStack.pop("right hand side of assignment"))
         
@@ -100,13 +105,13 @@ package object synthesis {
         case "THEN" => (when (stack.top("left operand of AND THEN") === 0) goto (skip))
         case "ELSE" => (when (stack.top("left operand of OR ELSE")) goto (skip))
       }) >> (stack.position -= 1) >> generate(right) >> skip
-    
+
     case b@Binary(operator @ ("==" | "!="), left, right, typed) =>
       generate(left) >> generate(right) >> variable(right =>
       (right := objectStack.pop("right operand of " + operator)) >>
       (operator match {
-        case "==" => stack.push(objectStack.pop("right operand of " + operator) === right)("result of " + operator)
-        case "!=" => stack.push(!(objectStack.pop("right operand of " + operator) === right))("result of " + operator)
+        case "==" => stack.push(objectStack.pop("left operand of " + operator) === right)("result of " + operator)
+        case "!=" => stack.push(!(objectStack.pop("left operand of " + operator) === right))("result of " + operator)
       }))
       
     case b@Binary(operator, left, right, typed) =>
@@ -119,7 +124,7 @@ package object synthesis {
         case "-"   => left -= right
         case "*"   => left *= right
         case "/"   => 
-          runtimeErrors.require(right)(runtimeErrors.nullPointer) >>
+          runtimeErrors.require(right)(runtimeErrors.divByZero) >>
           (left /= right)
         case "MOD" => left %= right
         case "AND" => left &= right
@@ -138,6 +143,7 @@ package object synthesis {
     
     case n@New(typed) =>
       val clazz = context.get(typed.asInstanceOf[AbsoluteName]).asInstanceOf[Class]
+      garbageCollector.runIf(heap.space < clazz.size) >>
       runtimeErrors.require(heap.space >= clazz.size)(runtimeErrors.outOfMemory) >>
       heap.position.modify( pos =>
       (~pos := Label(clazz.name.label)) >>
@@ -146,9 +152,12 @@ package object synthesis {
       (heap.space -= clazz.size)
 
     case a@Access(left, right) =>
-      generate(left) >> sequence(right.parameters map generate) >> generate(right)      
+      generate(left) >> 
+      runtimeErrors.require(objectStack.top("left side of access (check for null pointer)"))(runtimeErrors.nullPointer) >> 
+      sequence(right.parameters map generate) >> 
+      generate(right)      
     
-    case voc@VarOrCall(name, params, typed, lvalue, static) =>      
+    case voc@VarOrCall(name, params, typed, lvalue, static) =>
       context.get(name.asInstanceOf[AbsoluteName]) match {
         case Variable(_, _, offset, true, _) =>
           stack.push(objectStack.pop("object with " + name.relative) + offset.get)("address of " + name)
@@ -158,7 +167,8 @@ package object synthesis {
           val returnLabel = Label(voc.label + "_return")
           if (static) 
             stack.push(returnLabel)("return address") >> 
-            goto(Label(name.label)) >> returnLabel
+            goto(Label(name.label)) >> 
+            returnLabel
           else            
             stack.push(returnLabel)("return address") >> 
             goto(~(~(~(objectStack.position - (params.length))) + index.get)) >> 
@@ -172,9 +182,8 @@ package object synthesis {
     case UnBox(expr, typed) =>
       generate(expr) >> (stack.push(~(objectStack.pop(typed + " to unbox") + (Class.headerSize + 1)))("unboxed " + typed))
 
-    case d@DeRef(expr, typed) =>
-      generate(expr) >> variable( r => (r := ~stack.pop("pointer to dereference")) >> 
-      runtimeErrors.require(r)(runtimeErrors.nullPointer) >>
+    case DeRef(expr, typed) =>
+      generate(expr) >> variable( r => (r := ~stack.pop("pointer to dereference")) >>       
       objectStack.push(r)("dereferenced " + typed))
   }      
 
@@ -193,8 +202,8 @@ package object synthesis {
       def assignTo(r: R) = debugInfo(". " + name + " -> " + what) >> (r := ~position)
       def :=(v: Value) = debugInfo(". " + name + " <- " + what) >> (~position := v)
     }
-  }
-
+  }  
+  
   object heap {
     val size = App.arguments.heapSize
       
@@ -202,7 +211,7 @@ package object synthesis {
     private val start2: Label = Label("_heap_2")
     
     val current = MemoryVar("currentHeap")
-    val position = MemoryVar("heap_pointer")
+    val position = MemoryVar("heapPointer")
     val space = MemoryVar("heapSpace")
     
     val switch =             
@@ -215,7 +224,7 @@ package object synthesis {
       (position := p)) >>
       (space := size)
     
-    val allocate: Code[Unit] = 
+    val allocate = 
       current.allocate(0) >>
       position.allocate(start1) >>
       space.allocate(size) >>
@@ -234,9 +243,24 @@ package object synthesis {
       (returnAddress := ret) >> when(cond).goto(code) >> ret
     }
     
-    val resources = 
+    val gcexit = Label("_gcexit")
+    val gcnext  = Label("_gcnext")
+    
+    def resources(implicit context: Context) =
       returnAddress.allocate(0) >>
-      code >> heap.switch >> goto(returnAddress)
+      code >>
+      heap.switch >>
+      variable( before =>
+        (before := objectStack.position) >>
+        debugInfo("garbage collector invoked") >>
+        gcnext >>
+        (when (objectStack.position === objectStack.start) goto (gcexit)) >>
+        generate(VarOrCall(Root / "Object" / "_clone", static = false)) >>
+        goto(gcnext) >>
+        gcexit >>
+        (objectStack.position := before) >>
+        goto(returnAddress)
+      )
   }
   
   object runtimeErrors {
@@ -253,9 +277,10 @@ package object synthesis {
     }
     
     def resources = 
-      string("_outOfMemory"," *** runtime error: out of memory ***") >>
-      string("_nullPointer"," *** runtime error: null pointer ***") >>
-      string("_divBy0",     " *** runtime error: division by zero ***") >>
+      string("_outOfMemory",   " *** runtime error: out of memory ***") >>
+      string("_nullPointer",   " *** runtime error: null pointer ***") >>
+      string("_divBy0",        " *** runtime error: division by zero ***") >>
+      string("_stackOverflow", " *** runtime error: stack overflow ***") >>
       label >> (R6 := ~R7) >> (when (R6) goto print) >>
       exit >> print >> write(R6) >> (R7 += 1) >>
       goto(label)

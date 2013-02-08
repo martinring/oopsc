@@ -19,7 +19,7 @@ case class Context(path:         List[String] = Nil,
   def getVMT(n: Name): List[AbsoluteName] = vmts.getOrElse(n.asInstanceOf[AbsoluteName],Nil)
 }
 
-/*
+/**
  * Transform monad combining a state monad carrying a [[de.martinring.oopsc.semantic.Context]]
  * with an error collection monad.
  * @author Martin Ring
@@ -39,7 +39,7 @@ trait Transform[A] {
   def flatMap[B](f: A => Transform[B]): Transform[B] = transform(
     apply(_).flatMap { case (c,a) => f(a)(c) })
 
-  /** Short operator for [[flatMap]] */
+  /** Short operator for [[de.martinring.oopsc.semantic.Transform.flatMap]] */
   def >>=[B](f: A => Transform[B]): Transform[B] = flatMap(f)
 
   /** Short for >>= _ => */

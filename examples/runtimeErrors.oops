@@ -1,0 +1,25 @@
+CLASS Main IS
+  METHOD main IS
+    a: Integer;
+    b: Main;
+  BEGIN
+    READ a;
+    IF a = '0' THEN
+      WRITE 'A';
+      WRITE a / (4 + 4 - 8); | Div by zero
+    ELSEIF a = 'N' THEN
+      b.main; | Nullpointer
+    ELSEIF a = 'M' THEN
+      memory; | Out of memory
+    END IF
+  END METHOD
+
+  METHOD memory: Main IS
+    a: Main;
+    b: Main;
+  BEGIN
+    a := NEW Main;
+    b := memory;
+    RETURN b;
+  END METHOD
+END CLASS

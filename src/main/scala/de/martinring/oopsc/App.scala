@@ -25,22 +25,24 @@ object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
     val showVMTs = flag("v", "Show virtual method tables")  
     val showOpt = flag("o", "Show results of optimization")
     val debugMode = flag("d", "Compile debug messages into output")
-    val heapSize = namedArgument[Int]("hs", "Set heap size to %s (default is 400)") match {
+    val heapSize = namedArgument[Int]("hs", "Set heap size to %s (default is 200)") match {
       case Success(x,_)  => x
-      case _ => 10000
+      case _ => 200
     }
-    val stackSize = namedArgument[Int]("ss", "Set stack size to %s (default is 200)") match {
+    val stackSize = namedArgument[Int]("ss", "Set stack size to %s (default is 100)") match {
       case Success(x, _) => x
-      case _ => 10000
+      case _ => 100
     }
-    val sourceFile = argument[File]("source", "the source file", optional = false) match {
-      case Success(x, _) => x
+    val sourceFile = argument[File]("source", "the source file", optional = false)
+    lazy val source = sourceFile match {     
+      case Success(x, _) => Source.fromFile(x, "UTF-8").mkString
       case x =>
         print("[failure] Source File: ")
         x.messages.foreach(println(_))
         sys.exit
-    }
-    val source = Source.fromFile(sourceFile, "UTF-8").mkString
+    } 
+      
+      
     val targetFile = argument[String]("target", "the target file", optional = true) match {
       case Success(x, _) => Some(x)
       case x => None
@@ -51,6 +53,11 @@ object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
   
   if (!arguments.unrecognized.isEmpty) {
     println("[failure] Unrecognized arguments (-h for help): " + arguments.unrecognized.mkString(", "))
+  }
+  
+  if (arguments.showHelp) {
+    arguments.printUsage()
+    sys.exit()
   }
   
   private val t0 = System.nanoTime
@@ -82,11 +89,11 @@ object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
   // -------------------------------------------------------------------------------------------------------------------
   //  Context analysis
   // -------------------------------------------------------------------------------------------------------------------
-
+  
   private val compilation = semantic.ContextAnalysis.analyse(p)() match {
     case Success(p, msgs) => msgs.print; p
     case Errors(p, msgs) => msgs.print; p
-    case f => f.messages.print; sys.exit()
+    case f => f.messages.print; sys.exit
   }  
   if (arguments.showContext) {
     section("Results of the Context Analysis")
@@ -103,9 +110,8 @@ object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
       }
       println
     }
-
   }
-
+  
   // -------------------------------------------------------------------------------------------------------------------
   //  Optimization
   // -------------------------------------------------------------------------------------------------------------------
@@ -113,7 +119,7 @@ object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
   private val optimized = semantic.Optimization.optimize(compilation._2)(compilation._1) match {
     case Success(p, msgs) => msgs.print; p
     case Errors(p, msgs) => msgs.print; p
-    case f => f.messages.print; sys.exit()
+    case f => f.messages.print; sys.exit
   }
   if (arguments.showOpt) {
     section("Results of Optimization")

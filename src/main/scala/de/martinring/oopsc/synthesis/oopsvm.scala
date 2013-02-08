@@ -67,8 +67,8 @@ object Code {
   
   def lines(lines: Code[Unit]*): Code[Unit] = sequence(lines.toList)
   
-  def when (cond: Value) = new {
-    def goto (target: Literal) = cond.use(c => JPC(c,target))       
+  case class when (cond: Value) {
+    def goto (r: Literal) = cond.use(c => JPC(c,r))       
   }
     
   implicit def intLiteral(v: Int): Literal = IntLiteral(v)

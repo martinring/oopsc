@@ -9,9 +9,10 @@ import de.martinring.oopsc.output._
 import de.martinring.util.Failable._
 import scala.concurrent.promise
 import javax.lang.model.`type`.NullType
+import scala.util.Right
 
 /**
- * Object for the contextual analysis. Utilizes the [[de.martinring.oopsc.Transform]] monad.
+ * Object for the context analysis. Utilizes the [[de.martinring.oopsc.Transform]] monad.
  * @author Martin Ring
  */
 object ContextAnalysis {  
@@ -23,7 +24,7 @@ object ContextAnalysis {
    *  - All classes must themselves be successfully analysed.
    *  - There must be a class named `Main` defined which must have a method
    *    `main` that must not take parameters or have a return type other than
-   *    void)
+   *    `void`
    */
   def analyse(p: Program): Transform[Program] = for {
     _       <- bind(predefined) >> bind(p.classes)    
@@ -41,10 +42,10 @@ object ContextAnalysis {
   def generateClone(c: Class): Method = Method("_clone", Nil, 
     List(Variable("cloned",c.name,None,false)), List(
       If(VarOrCall("_cloned") === Literal.NULL,
-         Assign(VarOrCall("cloned"), New(c.name)) ::
-         ((for (a <- c.attributes filter (a => a.name.relative != "_cloned" && a.typed == nullType.name)) yield
+         Assign(VarOrCall("_cloned"), New(c.name)) ::
+         ((for (a <- c.attributes filter (a => a.name.relative != "_cloned" && a.typed == untyped.name)) yield
            Assign(Access(VarOrCall("cloned"), VarOrCall(a.name)), VarOrCall(a.name))) ++         
-         (for (a <- c.attributes filter (a => a.typed != nullType.name)) yield
+         (for (a <- c.attributes filter (a => a.typed != untyped.name)) yield
            Assign(Access(VarOrCall("cloned"), VarOrCall(a.name)), Access(VarOrCall(a.name), VarOrCall("_clone")))) :+
          Assign(VarOrCall("_cloned"), VarOrCall("cloned"))),
          Nil), Return(VarOrCall("_cloned"))), nullType.name)
@@ -74,7 +75,7 @@ object ContextAnalysis {
         } yield Some(base)
         case None    => subscope(n.path -> Nil) >> just(None) }      
       methods  = generateClone(c) :: c.methods
-      baseSize = base.map(_.size) getOrElse Class.headerSize
+      baseSize = base.map(_.size) getOrElse headerSize
       size     = baseSize + c.attributes.size
       result <- enter(n)(for {
         _        <- bind(c.attributes ++ methods)
@@ -94,12 +95,12 @@ object ContextAnalysis {
   }
   
   /**
-   * Binds the signature of a method. And checks if the method is allready existent
-   * in the vmt of the current class. If that is the case the method must satisfy
+   * Binds the signature of a method. And checks if the method is already existent
+   * in the VMT of the current class. If that is the case the method must satisfy
    * the following conditions:
    * 
    *  - it must not narrow the visibility of the overridden method
-   *  - it must not have a different return type than the overriden method   
+   *  - it must not have a different return type than the overridden method   
    *  - it must not have different parameter length or types than the overridden
    *    method
    *    
@@ -121,8 +122,8 @@ object ContextAnalysis {
         o <- getMethod(vmt(x))
         _ <- require(o.visibility <= m.visibility)("overriding method may not narrow visibility" at m) >>
              require(o.typed == typed)("method must have the same return type ("+o.typed+") as the overridden method" at m) >>
-             require(o.parameters.size == params.size)("method must have the same number of parameters ("+o.parameters.size+") as the overridden method" at m) >>
-             sequence(o.parameters.zip(params) map { case (a,b) => require(a.typed == b.typed)("overriding method has incompatible parameter type (required "+a.typed+")" at b) }) >>
+             require(o.parameters.size == params.size)(f"method must have the same number of parameters (${o.parameters.size}) as the overridden method" at m) >>
+             sequence(o.parameters.zip(params) map { case (a,b) => require(a.typed == b.typed)(f"overriding method has incompatible parameter type (required ${a.typed})" at b) }) >>
              setVMT(self)(vmt.updated(x,name))
       } yield x
     }
@@ -167,7 +168,7 @@ object ContextAnalysis {
     variables  <- sequence(m.variables.zip(0 until m.variables.size) map analyse)
     body       <- sequence(m.body map analyse)
     (b,t)       = body.span(!_.returns) // Partition body in parts before and after return
-    _          <- throwIf(m.typed != voidType.name && !body.exists(_.returns))(("missing return in method " + m.name) at m) >>
+    _          <- throwIf(m.typed != voidType.name && !body.exists(_.returns))((f"missing return in method ${m.name}") at m) >>
                   throwIf(t.size > 1)(Warn(t.head.pos, "statements after return will never be reached"))    
     result     <- update(m.copy(variables = variables, body = b :+ (t.headOption getOrElse Return(None,m.variables.size + 1 + m.parameters.size))) at m)
   } yield result
@@ -189,7 +190,7 @@ object ContextAnalysis {
   def analyse(st: Statement): Transform[Statement] = st match {
     case r: Read => for {
       operand <- analyse(r.operand) >>= requireType(intClass)
-      _       <- throwIf(!operand.isLValue) ("l-value expected" at operand)
+      _       <- throwIf(!operand.isLValue)("l-value expected" at operand)
     } yield Read(operand) at r
 
     case w: Write => for {
@@ -280,17 +281,21 @@ object ContextAnalysis {
         left  <- analyse(b.left) >>= unBox >>= requireType(boolType)
         right <- analyse(b.right) >>= unBox >>= requireType(boolType)
       } yield new Binary(b.operator, left, right, boolType.name) at b
-
-      case "=" | "#" => if (b.right == Literal.NULL) for {
-        left  <- analyse(b.left) >>= requireType(nullType)       
-        right <- analyse(b.right)
-      } yield new Binary(b.operator, left, right, boolType.name) at b
-      else for {
-        left  <- analyse(b.left) >>= unBox
-        isObj <- getType(left.typed) >>= (t => t isA Class.objectClass)
-        pOp    = b.operator match { case "=" => "=="; case "#" => "!=" }
-        right <- analyse(b.right) >>= unBox >>= requireType(left.typed)
-      } yield new Binary(if (isObj) pOp else b.operator, left, right, boolType.name) at b
+      
+      case "=" | "#" =>
+        val pOp = b.operator match { case "=" => "=="; case "#" => "!=" }
+        if (b.right == Literal.NULL) for {
+          left  <- analyse(b.left) >>= box >>= requireType(objectClass)
+        } yield new Binary(pOp, left, b.right, boolType.name) at b      
+        else if (b.left == Literal.NULL) for {        
+          right <- analyse(b.right) >>= box >>= requireType(objectClass)
+        } yield new Binary(pOp, b.left, right, boolType.name) at b
+        else for {
+          left      <- analyse(b.left) >>= unBox
+          isObj     <- getType(left.typed) >>= (t => t isA Class.objectClass)
+          right     <- analyse(b.right) >>= unBox
+          _         <- requireType(left.typed)(right) or requireType(right.typed)(left)
+        } yield new Binary(b.operator, left, right, boolType.name) at b
     }
 
     case l: Literal => just(l)
@@ -311,7 +316,6 @@ object ContextAnalysis {
       c    <- currentClass
       voc  <- analyseMember(c, voc.copy(parameters = ps) at voc)
       d    <- resolve(voc.name) >>= get
-      c    <- currentClass
       r    <- d match {
         case m: Method   => for {
            l <- analyse(VarOrCall(new RelativeName("SELF"), Nil, c) at voc) >>= box
@@ -339,9 +343,9 @@ object ContextAnalysis {
     name   <- resolve(voc.name)
     r      <- get(name)
     _      <- require(r.visibility != Visibility.Private   || caller == callee)(
-                (name + " is only accessible from within " + callee.name) at name) >>
+                f"$name is only accessible from within ${callee.name}" at name) >>
               require(r.visibility != Visibility.Protected || isam)(
-                (name + " is only accessible from within " + callee.name + " or deriving classes") at name) >>
+                f"$name is only accessible from within ${callee.name} or deriving classes" at name) >>
               require(r.isInstanceOf[Variable] || r.isInstanceOf[Method])(
                 "variable or method expected" at voc)
     r      <- r match {
@@ -350,22 +354,21 @@ object ContextAnalysis {
         } yield voc.copy(name = name, typed = a.typed, isLValue = true) at voc
       case m: Method    => for {
             _ <- throwIf(voc.parameters.size != m.parameters.size)(
-                Error(voc.pos,"wrong number of arguments for method " + voc.name +
-                              " (should be " + m.parameters.size + ")"))
+                Error(voc.pos,f"wrong number of arguments for method ${voc.name} (should be ${m.parameters.size})"))
             _ <- sequence(voc.parameters.zip(m.parameters).map { case (x,y) => requireType(y.typed)(x) })
         } yield voc.copy(name = name, typed = m.typed, static = ofBase) at voc
       case v: Variable  => for {
             _ <- throwIf(voc.parameters.size != 0)("variables can't take arguments" at voc)
         } yield voc.copy(name = name, typed = v.typed, isLValue = true) at voc       
     } } yield r    
-
+        
   /**
    * Boxes an expression if necessary. (As declared in [[de.martinring.oopsc.syntactic.Class.box]])
    */
   def box(expr: Expression): Transform[Expression] = 
     just(Class.box.get(expr.typed).map(t => Box(expr, t) at expr)
-             .getOrElse(if (expr.isLValue) DeRef(expr, expr.typed) at expr else expr))
-
+              .getOrElse(if (expr.isLValue) DeRef(expr, expr.typed) at expr else expr))       
+             
   /**
    * Unboxes an expression if necessary. (As declared in [[de.martinring.oopsc.syntactic.Class.unBox]])
    */
@@ -378,7 +381,7 @@ object ContextAnalysis {
    */
   def requireType(t1: Class)(expr: Expression): Transform[Expression] = for {
     t2 <- getType(expr.typed)
-    _  <- t2 isA t1 >>= (x=>require(x)("type mismatch\n    expected: %s\n    found: %s".format(t1.name, expr.typed) at expr))
+    _  <- t2 isA t1 >>= (x=>require(x)(f"type mismatch\n    expected: ${t1.name}\n    found: ${expr.typed}" at expr))
   } yield expr
   
   def requireType(t: Name)(expr: Expression): Transform[Expression] = for {
@@ -396,15 +399,14 @@ object ContextAnalysis {
     case _ => false
   }
   
-  implicit def extension_isA(a: Class): { def isA(b: Class): Transform[Boolean] } = new {
+  implicit class extension_isA(a: Class) {
     /**
      * Checks if class `b` is a subclass of or the same as this.
      */
-    def isA(b: Class): Transform[Boolean] =      
-      if (a.name == b.name) just(true)
-      else if (a.name == Class.nullType.name) b isA Class.objectClass
-      else if (b.name == Class.nullType.name) a isA Class.objectClass
-      else if (a.name != Class.objectClass.name && a.baseType.isDefined) getType(a.baseType.get) >>= (a => a isA b)
+    def isA(b: Class): Transform[Boolean] =
+      if (a.name == b.name || a.name == untyped.name || b.name == untyped.name) just(true)
+      else if (a.name == nullType.name) b isA objectClass
+      else if (a.baseType.isDefined) getType(a.baseType.get) >>= (a => a isA b)
       else just(false)
   }
 }

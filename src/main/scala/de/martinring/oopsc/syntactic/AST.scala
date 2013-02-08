@@ -280,22 +280,24 @@ object Class {
   
   val headerSize = 1
   
+  val untyped = Class(Root / "<untyped>" displayAs "untyped")
+  
   val intType = Class(Root / "<int>" displayAs "Integer")
   val boolType = Class(Root / "<bool>" displayAs "Boolean")
   val voidType = Class(Root / "<void>" displayAs "void")
-  val nullType = Class(Root / "<null>" displayAs "Object")
+  val nullType = Class(Root / "<null>" displayAs "null")
   
-  val objectClass = Class(Root / "Object", List(Variable("_cloned", nullType.name, None, true)), Nil)
+  val objectClass = Class(Root / "Object", List(Variable("_cloned", untyped.name, None, true)), Nil)
 
-  val intClass = Class(Root / "Integer",  List(Variable("_value", nullType.name, None, true)), Nil, Some("Object"))
+  val intClass = Class(Root / "Integer",  List(Variable("_value", untyped.name, None, true)), Nil, Some("Object"))
   
-  val boolClass = Class(Root / "Boolean", List(Variable("_value", nullType.name, None, true)), Nil, Some("Object"))
+  val boolClass = Class(Root / "Boolean", List(Variable("_value", untyped.name, None, true)), Nil, Some("Object"))
 
   implicit def className(c: Class): Name = c.name
   
   val predefinedClasses = List(objectClass,boolClass,intClass)
 
-  val predefined = predefinedClasses ++ List(intType, boolType, voidType, nullType)
+  val predefined = predefinedClasses ++ List(intType, boolType, voidType, nullType, untyped)
 
   val box: Map[Name, Name] = Map(intType.name -> intClass.name,
                                  boolType.name -> boolClass.name)

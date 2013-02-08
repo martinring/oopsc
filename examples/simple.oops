@@ -1,11 +1,15 @@
 CLASS Main IS   
   a: Integer;     
   METHOD main IS
-    a: Integer;     
+    b: Main;
   BEGIN    
-    WHILE TRUE DO
-      a := 65;
-      WRITE a;
-    END WHILE
+    b := NULL;
+    b.main;
+    a := NULL;    
+    IF a = NULL THEN
+      WRITE 'A';
+    ELSE
+      WRITE 'X';
+    END IF
   END METHOD
 END CLASS
