@@ -25,13 +25,13 @@ object App extends ConsoleApp("OOPSC.jar", "OOPSC Scala Edition, Version 1.7") {
     val showVMTs = flag("v", "Show virtual method tables")  
     val showOpt = flag("o", "Show results of optimization")
     val debugMode = flag("d", "Compile debug messages into output")
-    val heapSize = namedArgument[Int]("hs", "Set heap size to %s (default is 200)") match {
+    val heapSize = namedArgument[Int]("hs", "Set heap size to %s (default is 100)") match {
       case Success(x,_)  => x
-      case _ => 200
-    }
-    val stackSize = namedArgument[Int]("ss", "Set stack size to %s (default is 100)") match {
-      case Success(x, _) => x
       case _ => 100
+    }
+    val stackSize = namedArgument[Int]("ss", "Set stack size to %s (default is 50)") match {
+      case Success(x, _) => x
+      case _ => 50
     }
     val sourceFile = argument[File]("source", "the source file", optional = false)
     lazy val source = sourceFile match {     

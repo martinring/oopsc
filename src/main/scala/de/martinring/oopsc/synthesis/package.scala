@@ -31,27 +31,27 @@ package object synthesis {
     
     case m: Method =>      
       Label(m.name.label) >>
-      stack.push(stackFrame)("stack frame") >>
+      stack.push(stackFrame) >>
       (stackFrame := objectStack.position + 1) >>
       (if(m.variables.size > 0) 
-        variable(z => (z:=0) >> sequence(m.variables map (v => objectStack.push(z)("null for " + v.name))))
+        variable(z => (z:=0) >> sequence(m.variables map (v => objectStack.push(z))))
       else just(())) >>
       sequence(m.body map generate)
       
     case Read(operand) =>
-      generate(New(Class.intClass.name)) >>
+      generate(New(Class.intClass.name)) >>      
       generate(operand) >>
-      variable( newInt =>
-      (newInt := objectStack.pop("new int")) >>
+      variable( newInt =>      
+      (newInt := objectStack.pop) >>
       (~(newInt + Class.headerSize + 1) := read) >>
-      (~stack.pop("var to assign result of read") := newInt))
+      (~stack.pop := newInt))
       
-    case Write(operand) => generate(operand) >> write(stack.pop("value to write"))
+    case Write(operand) => generate(operand) >> write(stack.pop)
       
     case w@While(condition, body) =>
       val whileLabel = Label(w.label + "_while")
       val endLabel = Label(w.label + "_endWhile")
-      whileLabel >> generate(condition) >> when(stack.pop("while condition") === 0).goto(endLabel) >>
+      whileLabel >> generate(condition) >> when(stack.pop === 0).goto(endLabel) >>
       sequence(body map generate) >> goto(whileLabel) >> endLabel   
 
     case f@Forever(body) =>      
@@ -61,7 +61,7 @@ package object synthesis {
     case i@If(condition, body, elseBody) =>      
       val elseLabel = Label(i.label + "_else")
       val endLabel = Label(i.label + "_endIf")
-      generate(condition) >> when(stack.pop("if condition") === 0).goto(elseLabel) >>
+      generate(condition) >> when(stack.pop === 0).goto(elseLabel) >>
       sequence(body map generate) >> goto(endLabel) >> elseLabel >>
       sequence(elseBody map generate) >> endLabel
     
@@ -69,56 +69,54 @@ package object synthesis {
       
     case Assign(left, Literal.NULL) =>
       generate(left) >> 
-      (~stack.pop("left hand side of assignment (:= NULL)") := 0)
+      (~stack.pop := 0)
     
     
     case Assign(left, right) =>
       generate(right) >> generate(left) >> 
-      (~stack.pop("left hand side of assignment") := objectStack.pop("right hand side of assignment"))
+      (~stack.pop := objectStack.pop)
         
 
     case r@Return(Some(expr), offset) => 
       generate(expr) >> variable ( result =>
-      (result := objectStack.top("return value")) >>
-      debugInfo("correct objectStack by -" + offset) >>
+      (result := objectStack.top) >>      
       (objectStack.position -= offset) >>
-      (objectStack.top("return value") := result) >>      
-      (stackFrame := stack.pop("old stack frame")) >>
-      goto(stack.pop("return address")))
+      (objectStack.top := result) >>      
+      (stackFrame := stack.pop) >>
+      goto(stack.pop))
 
-    case r@Return(None, offset) =>
-      debugInfo("correct objectStack by -" +offset) >>
+    case r@Return(None, offset) =>      
       (objectStack.position -= offset) >>      
-      (stackFrame := stack.pop("old stack frame")) >>
-      goto(stack.pop("return address"))
+      (stackFrame := stack.pop) >>
+      goto(stack.pop)
 
     case Unary(operator, operand, typed) => 
       generate(operand) >> (operator match {
-        case "-" => (stack.top("operand") := -stack.top("negated operand"))
-        case "NOT" => (stack.top("operand") := !stack.top("not operand"))
+        case "-" => (stack.top := -stack.top)
+        case "NOT" => (stack.top := !stack.top)
       })
       
     /** shortcut operators */
     case b@Binary(operator @ ("THEN" | "ELSE"), left, right, typed) => 
       val skip = Label(b.label + "_skip")
       generate(left) >> (operator match {
-        case "THEN" => (when (stack.top("left operand of AND THEN") === 0) goto (skip))
-        case "ELSE" => (when (stack.top("left operand of OR ELSE")) goto (skip))
+        case "THEN" => (when (stack.top === 0) goto (skip))
+        case "ELSE" => (when (stack.top) goto (skip))
       }) >> (stack.position -= 1) >> generate(right) >> skip
 
     case b@Binary(operator @ ("==" | "!="), left, right, typed) =>
       generate(left) >> generate(right) >> variable(right =>
-      (right := objectStack.pop("right operand of " + operator)) >>
+      (right := objectStack.pop) >>
       (operator match {
-        case "==" => stack.push(objectStack.pop("left operand of " + operator) === right)("result of " + operator)
-        case "!=" => stack.push(!(objectStack.pop("left operand of " + operator) === right))("result of " + operator)
+        case "==" => stack.push(objectStack.pop === right)
+        case "!=" => stack.push(!(objectStack.pop === right))
       }))
       
     case b@Binary(operator, left, right, typed) =>
       generate(left) >> generate(right) >>
       variable( left => variable ( right => 
-      (right := stack.pop("right operand of " + operator)) >>
-      (left := stack.top("left operand of " + operator)) >>
+      (right := stack.pop) >>
+      (left := stack.top) >>
       (operator match {
         case "+"   => left += right
         case "-"   => left -= right
@@ -135,72 +133,83 @@ package object synthesis {
         case "<="  => left := left <= right
         case "="   => left := left === right            
         case "#"   => left := !(left === right)
-      })) >> (stack.top("result of " + operator) := left))
+      })) >> (stack.top := left))
       
-    case Literal.NULL => objectStack.push(0)("null pointer")
+    case Literal.NULL => objectStack.push(0)
       
-    case Literal(value, typed) => stack.push(value)("literal " + value)
+    case Literal(value, typed) => stack.push(value)
     
     case n@New(typed) =>
       val clazz = context.get(typed.asInstanceOf[AbsoluteName]).asInstanceOf[Class]
       garbageCollector.runIf(heap.space < clazz.size) >>
+      // if the garbage collector ran but could not free up enough memory
+      // we need to throw a runtime error. This also occurs if the garbage
+      // collector is invoked while it is allready running. (see garbageCollector.running)
       runtimeErrors.require(heap.space >= clazz.size)(runtimeErrors.outOfMemory) >>
-      heap.position.modify( pos =>
+      heap.position.modify(pos =>      
       (~pos := Label(clazz.name.label)) >>
-      objectStack.push(pos)("position of new " + typed + " on heap") >>
-      variable( init => (init := 0) >> sequence(0.to(clazz.size).map(_ => (pos += 1) >> (~pos := init)).toList))) >>
-      (heap.space -= clazz.size)
+      objectStack.push(pos) >>
+      variable( init => (init := 0) >> sequence(1.to(clazz.size).map(_ => (pos += 1) >> (~pos := init)).toList)) >> (pos += 1)) >>
+      (heap.space -= (clazz.size + 2))
 
     case a@Access(left, right) =>
       generate(left) >> 
-      runtimeErrors.require(objectStack.top("left side of access (check for null pointer)"))(runtimeErrors.nullPointer) >> 
+      runtimeErrors.require(objectStack.top)(runtimeErrors.nullPointer) >> 
       sequence(right.parameters map generate) >> 
       generate(right)      
     
     case voc@VarOrCall(name, params, typed, lvalue, static) =>
       context.get(name.asInstanceOf[AbsoluteName]) match {
         case Variable(_, _, offset, true, _) =>
-          stack.push(objectStack.pop("object with " + name.relative) + offset.get)("address of " + name)
+          stack.push(objectStack.pop + offset.get)
         case Variable(_, _, offset, false, _) =>
-          stack.push(stackFrame + offset.get)("address of " + name)
+          stack.push(stackFrame + offset.get)
         case Method(name, params, variables, body, typed, index, _) =>
           val returnLabel = Label(voc.label + "_return")
           if (static) 
-            stack.push(returnLabel)("return address") >> 
+            stack.push(returnLabel) >> 
             goto(Label(name.label)) >> 
             returnLabel
           else            
-            stack.push(returnLabel)("return address") >> 
+            stack.push(returnLabel) >> 
             goto(~(~(~(objectStack.position - (params.length))) + index.get)) >> 
             returnLabel
       }
       
     case Box(expr, typed) =>
       generate(expr) >> generate(New(typed)) >>
-      (~(objectStack.top("boxed " + typed) + Class.headerSize + 1) := stack.pop(typed + " to box"))
+      (~(objectStack.top + Class.headerSize + 1) := stack.pop)
     
     case UnBox(expr, typed) =>
-      generate(expr) >> (stack.push(~(objectStack.pop(typed + " to unbox") + (Class.headerSize + 1)))("unboxed " + typed))
+      generate(expr) >> (stack.push(~(objectStack.pop + (Class.headerSize + 1))))
 
     case DeRef(expr, typed) =>
-      generate(expr) >> variable( r => (r := ~stack.pop("pointer to dereference")) >>       
-      objectStack.push(r)("dereferenced " + typed))
+      generate(expr) >> variable( r => (r := ~stack.pop) >>       
+      objectStack.push(r))
   }      
 
   case class Stack(name: String, size: Int) {
-    val start: Label = Label("_" + name)
-
+    val start: Label = Label("_" + name)    
     val position: Code[R] = variable("_" + name)
+    val end: Label = Label("_" + name + "_end")
 
     val initialize: Code[Unit] = position >>= (r => r := start)
-    val allocate: Code[Unit] = start >> DAT(size, 0)
+    val allocate: Code[Unit] = start >> DAT(size, 0) >> end
 
-    def push(r: Value)(what: String): Code[Unit] =  (position += 1) >> (~position := r) >> debugInfo("+ " + name + " <- " + what)
-    def pop(what: String): Value = result ( r => debugInfo("- " + name + " -> " + what) >> (r := ~position) >> (position -= 1) )
+    def push(r: Value): Code[Unit] = 
+      (position += 1) >>
+      //unfortunately this code runs out of registers...
+      //runtimeErrors.require(position <= end)(runtimeErrors.stackOverflow) >> 
+      (~position := r)
+      
+    def pop: Value = 
+      result ( r => 
+        (r := ~position) >> 
+        (position -= 1) )
 
-    def top(what: String): LValue = new LValue {
-      def assignTo(r: R) = debugInfo(". " + name + " -> " + what) >> (r := ~position)
-      def :=(v: Value) = debugInfo(". " + name + " <- " + what) >> (~position := v)
+    def top: LValue = new LValue {
+      def assignTo(r: R) = (r := ~position)
+      def :=(v: Value) = (~position := v)
     }
   }  
   
@@ -214,8 +223,8 @@ package object synthesis {
     val position = MemoryVar("heapPointer")
     val space = MemoryVar("heapSpace")
     
-    val switch =             
-      variable( p => variable( c =>             
+    val switch =
+      variable( p => variable( c =>
       (c := current) >>
       (p := start1 * c) >>
       (c ^= 1) >>
@@ -225,8 +234,8 @@ package object synthesis {
       (space := size)
     
     val allocate = 
-      current.allocate(0) >>
-      position.allocate(start1) >>
+      current.allocate(1) >>
+      position.allocate(start2) >>
       space.allocate(size) >>
       start1 >> DAT(size,0) >>
       start2 >> DAT(size,0) 
@@ -236,31 +245,43 @@ package object synthesis {
   object garbageCollector {
     private val code = Label("_garbageCollector")
     val returnAddress = MemoryVar("gcReturnAddress")
+    val running = MemoryVar("gcRunning")
+    val before  = MemoryVar("gcBefore")    
     
     def runIf(cond: Value) = {
       counter += 1
       val ret = Label("gc_return_" + counter)
-      (returnAddress := ret) >> when(cond).goto(code) >> ret
+      when(running).goto(ret) >> 
+      (returnAddress := ret) >> 
+      when(cond).goto(code) >> 
+      ret
     }
     
     val gcexit = Label("_gcexit")
-    val gcnext  = Label("_gcnext")
+    val copynext  = Label("_gc_coopynext")
+    val clonenext = Label("_gc_clonenext")
     
     def resources(implicit context: Context) =
       returnAddress.allocate(0) >>
-      code >>
-      heap.switch >>
-      variable( before =>
-        (before := objectStack.position) >>
-        debugInfo("garbage collector invoked") >>
-        gcnext >>
-        (when (objectStack.position === objectStack.start) goto (gcexit)) >>
-        generate(VarOrCall(Root / "Object" / "_clone", static = false)) >>
-        goto(gcnext) >>
-        gcexit >>
-        (objectStack.position := before) >>
-        goto(returnAddress)
-      )
+      running.allocate(0) >>
+      before.allocate(0) >>      
+      code >>            
+      (running := 1) >>
+      heap.switch >>      
+      (before := objectStack.position) >>      
+      copynext >>        
+      stack.push(objectStack.pop) >>      
+      when(objectStack.position === objectStack.start).goto(clonenext) >>
+      goto(copynext) >>
+      clonenext >>      
+      when(objectStack.position === before).goto(gcexit) >>
+      objectStack.push(stack.pop) >>
+      when(objectStack.top === 0).goto(clonenext) >>
+      generate(VarOrCall(Root / "Object" / "_clone", static = false)) >>
+      goto(clonenext) >>
+      gcexit >>       
+      (running := 0) >>      
+      goto(returnAddress)
   }
   
   object runtimeErrors {
@@ -285,9 +306,10 @@ package object synthesis {
       exit >> print >> write(R6) >> (R7 += 1) >>
       goto(label)
     
-    def outOfMemory = (R7 := Label("_outOfMemory")) >> goto(label)
-    def nullPointer = (R7 := Label("_nullPointer")) >> goto(label)
-    def divByZero   = (R7 := Label("_divBy0"))      >> goto(label)
+    def outOfMemory   = (R7 := Label("_outOfMemory"))   >> goto(label)
+    def nullPointer   = (R7 := Label("_nullPointer"))   >> goto(label)
+    def divByZero     = (R7 := Label("_divBy0"))        >> goto(label)
+    def stackOverflow = (R7 := Label("_stackOverflow")) >> goto(label)    
   }    
   
   private var counter: Int = 0

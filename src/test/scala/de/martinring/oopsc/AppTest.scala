@@ -99,7 +99,8 @@ class AppTest extends Specification {
   checkErrors("examples/boolean3", "type mismatch")
   checkOutput("examples/classes1", "" -> "OK")
   checkErrors("examples/classes2", "already defined")
-  checkOutput("examples/code", "ABCDEFGHIJKLMNOPQRSTUVWXYZ" -> ("ABCDEFGHIJKLMNOPQRSTUVWXYZ".toList.map(_.toInt).mkString(" ") + " "))
+  checkOutput("examples/code", "Hallo" -> ("Hallo".toList.map(_.toInt).mkString(" ") + " "),
+                               "Garbage Collector" -> ("Garbage Collector".toList.map(_.toInt).mkString(" ") + " "))
   checkOutput("examples/echo", "Hallo Welt" -> "Hallo Welt")
   checkOutput("examples/else1", "" -> "ABCDEFGH")
   checkErrors("examples/else2", "`IF' expected but METHOD found")
@@ -129,7 +130,7 @@ class AppTest extends Specification {
   checkErrors("examples/return8", "missing return in method main.a")
   checkErrors("examples/return9", "main method must be of type void")
   checkOutput("examples/scope", "" -> "ABCDED")
-  checkOutput("examples/shortcut1", "" -> "ABCDEFGHI")
+  checkOutput("examples/shortcut1", "" -> "Shortcut!")
   checkOutput("examples/simple")
   checkOutput("examples/truefalse1", "" -> "OK")
   checkErrors("examples/truefalse2", "type mismatch")

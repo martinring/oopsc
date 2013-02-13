@@ -4,21 +4,26 @@ import scala.collection.immutable.SortedSet
 /** Code-Composition Monad */
 sealed trait Code[+T] {
   import Code._
+  
   def apply(s: AssemblerState): (T,AssemblerState)
+  
   def map[U](f: T => U): Code[U] = code {
     case s =>
       val (t,s2) = apply(s)
       (f(t),s2)
   }
+  
   def flatMap[U](f: T => Code[U]): Code[U] = code {
     case s =>
       val (t,s2) = apply(s)
       f(t)(s2)
   }
+  
   def >>=[T] = flatMap[T] _
+  
   def >>[T] (f: Code[T]): Code[T] = flatMap(_ => f)
   
-  lazy val run: List[Line] = apply(AssemblerState.initial)._2.instructions :+ end
+  lazy val run: Vector[Line] = apply(AssemblerState.initial)._2.instructions :+ end
 }
 
 object Code {
@@ -55,12 +60,24 @@ object Code {
   def goto(r: Value): Code[Unit] = R0 := r
   
   def read: Value = result(r => SYS(0,r.n))  
+  
   def write(v: Value): Code[Unit] = v.use(r => SYS(1,r.n))
+  
+  def print(v: Value): Code[Unit] = v.use{ case r =>     
+    val loop = Label("loop_" + java.util.UUID.randomUUID().toString().replace('-','_'))
+    loop >>
+    write((r % 10) + '0'.toInt) >>
+    (r := r / 10) >>
+    when(r).goto(loop) >>
+    write('\n'.toInt)
+  }
   
   def result(f: R => Code[Unit]): Value = new Value {
     def assignTo(r: R): Code[Unit] = f(r)
   }
   
+  /** can be used to compile debug messages into output. 
+   *  only utilizes one register but produces a lot of code */
   def debugInfo(s: String): Code[Unit] = if (de.martinring.oopsc.App.arguments.debugMode) sequence(for (c <- (s+"\n").toList) yield write(c.toInt)) else just(())
   
   def sequence(stuff: List[Code[Unit]]): Code[Unit] = stuff.foldLeft[Code[Unit]](just(())){ case (a,b) => (a >> b): Code[Unit] }  
@@ -169,13 +186,13 @@ case class Address(r: R) {
   override def toString = "(%s)" format r  
 }
 
-case class AssemblerState(instructions: List[Line], 
+case class AssemblerState(instructions: Vector[Line], 
                           registers: SortedSet[R],
                           names: Map[String,R])
 
 object AssemblerState {
   val initial = AssemblerState(
-    List(MRI(R1,1)), 
+    Vector(MRI(R1,1)), 
     SortedSet(R2,R3,R4,R5,R6,R7)(Ordering.by(_.n)),
     Map.empty)
 }

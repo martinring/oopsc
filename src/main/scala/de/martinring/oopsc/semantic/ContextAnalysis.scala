@@ -42,11 +42,14 @@ object ContextAnalysis {
   def generateClone(c: Class): Method = Method("_clone", Nil, 
     List(Variable("cloned",c.name,None,false)), List(
       If(VarOrCall("_cloned") === Literal.NULL,
-         Assign(VarOrCall("_cloned"), New(c.name)) ::
+         Assign(VarOrCall("cloned"), New(c.name)) ::
          ((for (a <- c.attributes filter (a => a.name.relative != "_cloned" && a.typed == untyped.name)) yield
            Assign(Access(VarOrCall("cloned"), VarOrCall(a.name)), VarOrCall(a.name))) ++         
          (for (a <- c.attributes filter (a => a.typed != untyped.name)) yield
-           Assign(Access(VarOrCall("cloned"), VarOrCall(a.name)), Access(VarOrCall(a.name), VarOrCall("_clone")))) :+
+           If(VarOrCall(a.name) === Literal.NULL,
+              List(Assign(Access(VarOrCall("cloned"), VarOrCall(a.name)), Literal.NULL)),
+              List(Assign(Access(VarOrCall("cloned"), VarOrCall(a.name)), Access(VarOrCall(a.name), VarOrCall("_clone")))))
+           ) :+
          Assign(VarOrCall("_cloned"), VarOrCall("cloned"))),
          Nil), Return(VarOrCall("_cloned"))), nullType.name)
   
